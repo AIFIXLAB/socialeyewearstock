@@ -310,6 +310,27 @@ async function enterApp(){
   await refresh();
   clearInterval(pollT);pollT=setInterval(()=>{if(!document.hidden)refresh()},60000);
 }
+/* ย้ายข้อมูลเก่าที่เคยเก็บในเบราว์เซอร์เข้า Supabase */
+const MIG_KEY='social-eyewear-migrated';let migrating=null;
+function oldRows(){
+  if(!remote||mode!=='live')return [];
+  try{
+    if(localStorage.getItem(MIG_KEY))return [];
+    const d=JSON.parse(localStorage.getItem(LS_KEY)||'{}'),out=[];
+    COLS.forEach(c=>{if(Array.isArray(d[c]))d[c].forEach(r=>{if(r&&typeof r.id==='string'&&!S[c].some(x=>x.id===r.id))out.push([c,r])})});
+    return out;
+  }catch(_){return []}
+}
+async function migrateOld(){
+  const rows=oldRows();if(!rows.length||migrating)return;
+  migrating={done:0,total:rows.length};render();
+  try{
+    for(const[c,r]of rows){await put(c,r.id,r);migrating.done++;render()}
+    try{localStorage.setItem(MIG_KEY,new Date().toISOString())}catch(_){}
+    toast(`ย้ายข้อมูลเดิมแล้ว ${rows.length} รายการ`);
+  }catch(e){toast(errText(e)+' รายการที่ย้ายแล้วยังอยู่ กดย้ายต่อได้')}
+  migrating=null;render();
+}
 function lockApp(){backToPin('')}
 function accountTools(){return remote?'<div class="acct"><button class="btn sm" data-act="lock">ล็อกหน้าจอ</button></div>':''}
 function viewPin(){
@@ -358,6 +379,8 @@ function notices(){
   if(mode==='loading')h+=`<div class="notice">กำลังโหลดข้อมูลร้าน</div>`;
   if(mode==='error')h+=`<div class="notice err"><span>โหลดข้อมูลไม่สำเร็จ ตรวจอินเทอร์เน็ตหรือการตั้งค่า Supabase</span><button class="btn sm" data-act="retry">ลองอีกครั้ง</button></div>`;
   if(mode==='stale')h+=`<div class="notice"><span>เชื่อมต่อไม่ได้ ตัวเลขบนจออาจไม่เป็นปัจจุบัน</span><button class="btn sm" data-act="retry">โหลดใหม่</button></div>`;
+  if(migrating)h+=`<div class="notice">กำลังย้ายข้อมูลเดิม ${migrating.done}/${migrating.total} รายการ อย่าเพิ่งปิดหน้านี้</div>`;
+  else{const old=oldRows();if(old.length){const n=c=>old.filter(x=>x[0]===c).length;h+=`<div class="notice"><span>พบ<b>ข้อมูลเดิมในเบราว์เซอร์นี้</b> ${old.length} รายการ (สินค้า ${n('products')}, ขาย ${n('sales')}, รับ-จ่าย ${n('ledger')}, ปฏิทิน ${n('events')})</span><button class="btn sm primary" data-act="migrate">ย้ายเข้าระบบ</button></div>`}}
   const exN=COLS.reduce((n,c)=>n+S[c].filter(x=>x.example).length,0);
   if(exN)h+=`<div class="notice"><span>ตอนนี้เป็น<b>ข้อมูลตัวอย่าง</b> ${exN} รายการ ทั้งชื่อลูกค้าและราคาสมมติขึ้น เพื่อให้เห็นการทำงาน ลบได้เมื่อพร้อมใช้จริง</span><button class="btn sm ${confirmEx?'danger':''}" data-act="clear-ex">${confirmEx?'กดอีกครั้งเพื่อยืนยันการลบ':'ลบข้อมูลตัวอย่าง'}</button></div>`;
   return h;
@@ -692,6 +715,7 @@ document.addEventListener('click',async ev=>{
   if(a==='export')exportCsv();
   if(a==='retry'){mode=mode==='stale'?'live':'loading';render();refresh()}
   if(a==='lock')lockApp();
+  if(a==='migrate')migrateOld();
   if(a==='backup'){saveFile(`social-eyewear-backup-${today()}.json`,JSON.stringify({version:1,exportedAt:new Date().toISOString(),data:S},null,1),'application/json');toast('ดาวน์โหลดไฟล์สำรองแล้ว')}
 });
 document.addEventListener('keydown',ev=>{if(ev.key==='Enter'&&ev.target.matches('tr[data-act]'))ev.target.click()});
