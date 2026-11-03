@@ -380,7 +380,6 @@ function notices(){
   if(mode==='error')h+=`<div class="notice err"><span>โหลดข้อมูลไม่สำเร็จ ตรวจอินเทอร์เน็ตหรือการตั้งค่า Supabase</span><button class="btn sm" data-act="retry">ลองอีกครั้ง</button></div>`;
   if(mode==='stale')h+=`<div class="notice"><span>เชื่อมต่อไม่ได้ ตัวเลขบนจออาจไม่เป็นปัจจุบัน</span><button class="btn sm" data-act="retry">โหลดใหม่</button></div>`;
   if(migrating)h+=`<div class="notice">กำลังย้ายข้อมูลเดิม ${migrating.done}/${migrating.total} รายการ อย่าเพิ่งปิดหน้านี้</div>`;
-  else{const old=oldRows();if(old.length){const n=c=>old.filter(x=>x[0]===c).length;h+=`<div class="notice"><span>พบ<b>ข้อมูลเดิมในเบราว์เซอร์นี้</b> ${old.length} รายการ (สินค้า ${n('products')}, ขาย ${n('sales')}, รับ-จ่าย ${n('ledger')}, ปฏิทิน ${n('events')})</span><button class="btn sm primary" data-act="migrate">ย้ายเข้าระบบ</button></div>`}}
   const exN=COLS.reduce((n,c)=>n+S[c].filter(x=>x.example).length,0);
   if(exN)h+=`<div class="notice"><span>ตอนนี้เป็น<b>ข้อมูลตัวอย่าง</b> ${exN} รายการ ทั้งชื่อลูกค้าและราคาสมมติขึ้น เพื่อให้เห็นการทำงาน ลบได้เมื่อพร้อมใช้จริง</span><button class="btn sm ${confirmEx?'danger':''}" data-act="clear-ex">${confirmEx?'กดอีกครั้งเพื่อยืนยันการลบ':'ลบข้อมูลตัวอย่าง'}</button></div>`;
   return h;
@@ -514,7 +513,7 @@ function viewProducts(){
   return `<div class="head"><div><h1>สินค้า</h1><p class="sub">ฐานข้อมูลกรอบและเลนส์ ใช้ดึงราคาตอนบันทึกการขาย</p></div><div class="tools"><button class="btn" data-act="paste">วางจาก Excel</button><button class="btn primary" data-act="new-product">+ เพิ่มสินค้า</button></div></div>
   ${notices()}
   <section class="panel"><div class="head" style="margin-bottom:8px"><div class="tools">${[['all','ทั้งหมด'],['lens','เลนส์'],['frame','กรอบ']].map(([k,v])=>`<button class="btn sm ${prodKind===k?'primary':''}" data-act="pkind" data-k="${k}">${v}</button>`).join('')}</div><input id="prodQ" class="search" type="search" placeholder="ค้นหายี่ห้อ รุ่น Coating" aria-label="ค้นหาสินค้า" value="${esc(prodQ)}"></div><div id="prodList">${prodList()}</div></section>
-  <section class="panel"><h2>สำรองข้อมูล</h2><p class="dim" style="margin:0 0 10px">เก็บสำเนาข้อมูลทั้งหมดของร้านเป็นไฟล์ หรือนำไฟล์สำรองกลับเข้าระบบ รายการที่มีอยู่แล้วจะถูกแทนด้วยข้อมูลในไฟล์</p><div class="tools"><button class="btn" data-act="backup">ดาวน์โหลดไฟล์สำรอง</button><label class="btn" style="display:inline-flex;justify-content:center;color:var(--fg);font-size:.95rem">กู้คืนจากไฟล์<input id="restoreFile" type="file" accept="application/json,.json" hidden></label></div></section>
+  <section class="panel"><h2>สำรองข้อมูล</h2><p style="margin:0 0 6px;font-weight:600">${remote?(mode==='live'?'ข้อมูลเก็บที่ฐานข้อมูลร้าน (Supabase) แล้ว':'ยังเชื่อมฐานข้อมูลร้านไม่สำเร็จ'):'ข้อมูลเก็บในเบราว์เซอร์เครื่องนี้เท่านั้น'}</p><p class="dim" style="margin:0 0 10px">เก็บสำเนาข้อมูลทั้งหมดของร้านเป็นไฟล์ หรือนำไฟล์สำรองกลับเข้าระบบ รายการที่มีอยู่แล้วจะถูกแทนด้วยข้อมูลในไฟล์</p><div class="tools"><button class="btn" data-act="backup">ดาวน์โหลดไฟล์สำรอง</button><label class="btn" style="display:inline-flex;justify-content:center;color:var(--fg);font-size:.95rem">กู้คืนจากไฟล์<input id="restoreFile" type="file" accept="application/json,.json" hidden></label>${(()=>{const n=oldRows().length;return n?`<button class="btn" data-act="migrate">ย้ายข้อมูลเดิมในเบราว์เซอร์ที่ยังตกค้าง ${n} รายการ</button>`:''})()}</div></section>
   <section class="panel show-s"><h2>บัญชี</h2>${accountTools()}</section>`;
 }
 
@@ -536,7 +535,7 @@ let toastT;function toast(t){const n=$('#toast');n.textContent=t;n.hidden=false;
 const dlg=$('#dlg');
 function openDlg(html){dlg.innerHTML=html;if(!dlg.open)dlg.showModal()}
 const dlgHead=t=>`<div class="dhead"><h2>${esc(t)}</h2><button type="button" class="btn sm" data-act="close">ปิด</button></div>`;
-const dlgFoot=(id,col)=>`<div class="error" id="fErr" role="alert"></div><div class="dfoot">${id?`<button type="button" class="btn danger" data-act="delete" data-col="${col}" data-id="${esc(id)}">ลบรายการนี้</button>`:''}<div><button type="button" class="btn" data-act="close">ยกเลิก</button><button class="btn primary">บันทึก</button></div></div>`;
+const dlgFoot=(id,col,extra='')=>`<div class="error" id="fErr" role="alert"></div><div class="dfoot">${id?`<button type="button" class="btn danger" data-act="delete" data-col="${col}" data-id="${esc(id)}">ลบรายการนี้</button>`:''}${extra}<div><button type="button" class="btn" data-act="close">ยกเลิก</button><button class="btn primary">บันทึก</button></div></div>`;
 const opts=(list,val,ph)=>`<option value="">${esc(ph)}</option>`+[...new Set(list.concat(val?[val]:[]).filter(Boolean))].sort().map(x=>`<option ${x===val?'selected':''}>${esc(x)}</option>`).join('');
 
 /* ---------- ฟอร์มขาย ---------- */
@@ -616,14 +615,14 @@ function validateSale(s,id){
 }
 
 /* ---------- ฟอร์มอื่น ---------- */
-function openProduct(p){
+function openProduct(p,copied){
   const kind=p?.kind||(prodKind==='frame'?'frame':'lens');
-  openDlg(`<form id="productForm" novalidate data-id="${esc(p?.id||'')}" data-ex="${p?.example?1:''}">${dlgHead(p?'แก้ไขสินค้า':'เพิ่มสินค้า')}
+  openDlg(`<form id="productForm" novalidate data-id="${esc(p?.id||'')}" data-ex="${p?.example?1:''}">${dlgHead(copied?'เพิ่มสินค้า (คัดลอกมา)':p?'แก้ไขสินค้า':'เพิ่มสินค้า')}${copied?'<p class="dim" style="margin:0">แก้ส่วนที่ต่างจากเดิม เช่น Coating หรือ Index แล้วกดบันทึก รายการเดิมจะไม่เปลี่ยน</p>':''}
    <div class="grid"><label>ประเภท<select id="p_kind"><option value="lens" ${kind==='lens'?'selected':''}>เลนส์</option><option value="frame" ${kind==='frame'?'selected':''}>กรอบแว่น</option></select></label>
    <label>ยี่ห้อ<input id="p_brand" required value="${esc(p?.brand)}"></label><label>รุ่น<input id="p_model" required value="${esc(p?.model)}"></label></div>
    <div class="grid"><label data-for="lens">Coating<input id="p_coating" value="${esc(p?.coating)}"></label><label data-for="lens">Index<input id="p_index" list="dlIdx" value="${esc(p?.index)}"><datalist id="dlIdx"><option value="1.50"></option><option value="1.56"></option><option value="1.60"></option><option value="1.67"></option><option value="1.74"></option></datalist></label><label data-for="frame">สี<input id="p_color" value="${esc(p?.color)}"></label></div>
    <div class="grid"><label>ราคาทุน<input id="p_cost" type="number" min="0" step="any" inputmode="decimal" value="${esc(p?.cost)}"></label><label>ราคาขาย<input id="p_price" type="number" min="0" step="any" inputmode="decimal" value="${esc(p?.price)}"></label></div>
-   ${dlgFoot(p?.id,'products')}</form>`);
+   ${dlgFoot(p?.id,'products',p?.id?'<button type="button" class="btn" data-act="copy-product">คัดลอกเป็นสินค้าใหม่</button>':'')}</form>`);
   syncKind();
 }
 function syncKind(){const k=$('#p_kind').value;dlg.querySelectorAll('[data-for]').forEach(n=>n.hidden=n.dataset.for!==k)}
@@ -662,7 +661,7 @@ dlg.addEventListener('submit',async ev=>{
   if(f.id==='saleForm'){const s=formSale(),m=validateSale(s,F.id);if(m)return err(m);selDay=s.date;await doSave(f,'sales',F.id,s)}
   if(f.id==='productForm'){const k=v('p_kind');if(!v('p_brand')||!v('p_model'))return err('กรุณากรอกยี่ห้อและรุ่น');if(num(v('p_cost'))<0||num(v('p_price'))<0)return err('ราคาต้องไม่ติดลบ');
     const b={kind:k,brand:v('p_brand'),model:v('p_model'),cost:num(v('p_cost')),price:num(v('p_price')),...ex};if(k==='lens'){b.coating=v('p_coating');b.index=v('p_index')}else b.color=v('p_color');
-    if(S.products.some(p=>p.id!==id&&pKey(p)===pKey(b)))return err('มีสินค้านี้อยู่แล้ว');await doSave(f,'products',id,b)}
+    if(S.products.some(p=>p.id!==id&&pKey(p)===pKey(b)))return err('มีสินค้านี้อยู่แล้ว แก้รุ่น Coating Index หรือสีให้ต่างจากเดิมก่อนบันทึก');await doSave(f,'products',id,b)}
   if(f.id==='ledgerForm'){if(!v('l_date'))return err('กรุณาเลือกวันที่');if(!(num(v('l_amount'))>0))return err('กรุณากรอกจำนวนเงินมากกว่า 0');await doSave(f,'ledger',id,{type:v('l_type'),date:v('l_date'),category:v('l_category')||'อื่น ๆ',title:v('l_title'),amount:num(v('l_amount')),...ex})}
   if(f.id==='eventForm'){if(!v('e_date')||!v('e_title'))return err('กรุณากรอกวันที่และหัวข้อ');selDay=v('e_date');await doSave(f,'events',id,{date:v('e_date'),time:v('e_time'),kind:v('e_kind'),title:v('e_title'),note:v('e_note'),...ex})}
   if(f.id==='pasteForm'){const{items,errors}=parsePasted($('#pasteText').value);if(errors.length)return err(errors.slice(0,3).join(' / '));if(!items.length)return err('ยังไม่มีข้อมูลให้นำเข้า');
@@ -714,6 +713,7 @@ document.addEventListener('click',async ev=>{
   }
   if(a==='export')exportCsv();
   if(a==='retry'){mode=mode==='stale'?'live':'loading';render();refresh()}
+  if(a==='copy-product'){const v=i=>$('#'+i).value.trim();const k=v('p_kind');openProduct({kind:k,brand:v('p_brand'),model:v('p_model'),coating:v('p_coating'),index:v('p_index'),color:v('p_color'),cost:v('p_cost'),price:v('p_price')},true);const m=$('#p_model');if(m)m.focus();return}
   if(a==='lock')lockApp();
   if(a==='migrate')migrateOld();
   if(a==='backup'){saveFile(`social-eyewear-backup-${today()}.json`,JSON.stringify({version:1,exportedAt:new Date().toISOString(),data:S},null,1),'application/json');toast('ดาวน์โหลดไฟล์สำรองแล้ว')}
