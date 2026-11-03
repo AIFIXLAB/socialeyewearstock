@@ -44,6 +44,7 @@ h1{font-size:1.55rem}h2{font-size:1.1rem}h3{font-size:.95rem}
 .nav a[aria-current="page"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
 .nav svg{width:19px;height:19px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .nav .short{display:none}
+.show-s{display:none}
 #acct{margin-top:auto}.acct{display:flex;flex-direction:column;gap:6px;padding-inline:10px;overflow-wrap:anywhere}
 main{min-width:0;padding-block:22px 48px;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:18px;max-width:1180px;width:100%}
 .head{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;justify-content:space-between}
@@ -150,6 +151,7 @@ legend{font:600 .9rem var(--display);padding-inline:5px;display:flex;align-items
   .rail{position:fixed;inset:auto 0 0 0;height:auto;z-index:20;border-right:0;border-top:1px solid var(--line);padding:4px 4px calc(4px + env(safe-area-inset-bottom,0px));padding-left:max(4px,env(safe-area-inset-left,0px));padding-right:max(4px,env(safe-area-inset-right,0px));display:block}
   .brand{display:none}
   #acct{display:none}
+  .show-s{display:block}
   .nav{flex-direction:row}
   .nav a{flex:1 1 0;flex-direction:column;gap:1px;font-size:.7rem;padding:5px 1px;min-width:0;text-align:center}
   .nav .long{display:none}.nav .short{display:inline}
@@ -178,7 +180,6 @@ legend{font:600 .9rem var(--display);padding-inline:5px;display:flex;align-items
 <div id="tip" hidden></div>
 <div id="toast" role="status" hidden></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
 <script>
 'use strict';
@@ -239,75 +240,97 @@ function parsePasted(text){
 }
 const pKey=p=>[p.kind,p.brand,p.model,p.kind==='lens'?p.coating:p.color,p.kind==='lens'?p.index:''].map(x=>String(x||'').trim().toLowerCase()).join('|');
 
-/* ---------- ที่เก็บข้อมูล: Supabase หรือเบราว์เซอร์เครื่องนี้ ---------- */
+/* ---------- ที่เก็บข้อมูล: Supabase (ตรวจรหัสที่ฐานข้อมูล) หรือเบราว์เซอร์เครื่องนี้ ---------- */
 const S={products:[],sales:[],ledger:[],events:[]};
 const COLS=Object.keys(S);
-const LS_KEY='social-eyewear-data-v1';
+const LS_KEY='social-eyewear-data-v1',PIN_KEY='social-eyewear-pin';
 const CFG=window.SE_CONFIG||{};
-let blocked=false,sb=null,mode='loading',notMember=false,loginErr='',userEmail='',writeSeq=0,pollT=null;
+const remote=!!(CFG.supabaseUrl&&CFG.supabaseAnonKey);
+let mode='loading',PIN='',writeSeq=0,pollT=null,pinBusy=false;
 const newId=()=>(crypto.randomUUID?crypto.randomUUID():'id-'+Date.now()+'-'+Math.random().toString(36).slice(2));
 function errText(e){
-  if(e&&e.code==='42501')return 'บัญชีนี้ไม่มีสิทธิ์บันทึกข้อมูล ติดต่อเจ้าของร้าน';
+  if(e&&e.code==='locked')return 'ใส่รหัสผิดหลายครั้ง ระบบล็อกชั่วคราว 30 นาที ลองใหม่ภายหลัง';
+  if(e&&e.code==='bad_pin')return 'รหัสเปลี่ยนไปแล้ว กรุณาเข้าโปรแกรมใหม่';
   if(e&&e.name==='QuotaExceededError')return 'พื้นที่ในเบราว์เซอร์เต็ม ควรเชื่อม Supabase แล้วลองอีกครั้ง';
   return 'บันทึกไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง';
 }
+async function rpc(fn,args){
+  const res=await fetch(CFG.supabaseUrl.replace(/\/$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',headers:{apikey:CFG.supabaseAnonKey,'Content-Type':'application/json'},body:JSON.stringify(args)});
+  if(!res.ok)throw Object.assign(new Error('http '+res.status),{code:'http',status:res.status});
+  const j=await res.json();
+  if(!j.ok)throw Object.assign(new Error(j.error),{code:j.error});
+  return j;
+}
+function savePin(v){try{v?sessionStorage.setItem(PIN_KEY,v):sessionStorage.removeItem(PIN_KEY)}catch(_){}}
+function readPin(){try{return sessionStorage.getItem(PIN_KEY)||''}catch(_){return ''}}
 function saveLocal(){localStorage.setItem(LS_KEY,JSON.stringify(S))}
 function loadLocal(){
   try{const d=JSON.parse(localStorage.getItem(LS_KEY)||'{}');COLS.forEach(c=>{if(Array.isArray(d[c]))S[c]=d[c]})}
   catch(_){mode='nostore'}
 }
+function backToPin(msg){
+  clearInterval(pollT);PIN='';savePin('');COLS.forEach(c=>S[c]=[]);
+  if(dlg.open)dlg.close();
+  mode='pin';$('#main').innerHTML='';render();
+  const e=$('#pinErr');if(e&&msg)e.textContent=msg;
+  const i=$('#pinInput');if(i)i.focus();
+}
+function authGone(e){if(e&&e.code==='bad_pin'){backToPin('กรุณาใส่รหัสอีกครั้ง');return true}return false}
 async function put(col,id,data){
-  if(blocked)throw new Error('offline');
   const body={...data};delete body.id;
-  if(sb){writeSeq++;const{error}=await sb.from('app_docs').upsert({col,id,data:body,updated_at:new Date().toISOString()});if(error)throw error}
+  if(remote){writeSeq++;try{await rpc('app_put',{p_pin:PIN,p_col:col,p_id:id,p_data:body})}catch(e){authGone(e);throw e}}
   const prev=S[col];S[col]=prev.filter(x=>x.id!==id).concat({id,...body});
-  if(!sb&&mode!=='nostore'){try{saveLocal()}catch(e){S[col]=prev;throw e}}
+  if(!remote&&mode!=='nostore'){try{saveLocal()}catch(e){S[col]=prev;throw e}}
   render();
 }
 async function del(col,id){
-  if(blocked)throw new Error('offline');
-  if(sb){writeSeq++;const{error}=await sb.from('app_docs').delete().eq('col',col).eq('id',id);if(error)throw error}
+  if(remote){writeSeq++;try{await rpc('app_del',{p_pin:PIN,p_col:col,p_id:id})}catch(e){authGone(e);throw e}}
   const prev=S[col];S[col]=prev.filter(x=>x.id!==id);
-  if(!sb&&mode!=='nostore'){try{saveLocal()}catch(e){S[col]=prev;throw e}}
+  if(!remote&&mode!=='nostore'){try{saveLocal()}catch(e){S[col]=prev;throw e}}
   render();
 }
 async function fetchAll(){
   const seq=writeSeq,next={products:[],sales:[],ledger:[],events:[]},size=1000;
   for(let from=0;;from+=size){
-    const{data,error}=await sb.from('app_docs').select('col,id,data').order('col').order('id').range(from,from+size-1);
-    if(error)throw error;
-    data.forEach(r=>{if(next[r.col])next[r.col].push({id:r.id,...r.data})});
-    if(data.length<size)break;
+    const{rows}=await rpc('app_list',{p_pin:PIN,p_from:from,p_limit:size});
+    rows.forEach(r=>{if(next[r.col])next[r.col].push({id:r.id,...r.data})});
+    if(rows.length<size)break;
   }
   if(seq!==writeSeq)return;
   const changed=COLS.some(c=>JSON.stringify(next[c])!==JSON.stringify([...S[c]].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)));
   if(changed||mode!=='live'){COLS.forEach(c=>S[c]=next[c]);mode='live';render()}
 }
 async function refresh(){
-  try{await fetchAll()}catch(_){if(mode!=='login'){mode=mode==='live'?'stale':'error';render()}}
+  if(mode==='pin')return;
+  try{await fetchAll()}
+  catch(e){if(authGone(e))return;mode=mode==='live'||mode==='stale'?'stale':'error';render()}
 }
-async function enter(session){
-  userEmail=session.user.email||'';mode='loading';render();
-  const{data,error}=await sb.rpc('is_member');
-  if(error){mode='error';render();return}
-  notMember=!data;
-  if(notMember){mode='live';render();return}
+async function enterApp(){
+  mode='loading';$('#main').innerHTML='';render();
   await refresh();
   clearInterval(pollT);pollT=setInterval(()=>{if(!document.hidden)refresh()},60000);
 }
-async function boot(){
-  render();
-  if(CFG.supabaseUrl&&CFG.supabaseAnonKey){
-    if(!window.supabase){blocked=true;mode='error';render();return}
-    sb=window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseAnonKey);
-    const{data:{session}}=await sb.auth.getSession();
-    sb.auth.onAuthStateChange(ev=>{if(ev==='SIGNED_OUT')setTimeout(()=>{clearInterval(pollT);COLS.forEach(c=>S[c]=[]);mode='login';notMember=false;render()})});
-    document.addEventListener('visibilitychange',()=>{if(!document.hidden&&mode!=='login')refresh()});
-    if(session)await enter(session);else{mode='login';render()}
-  }else{mode='local';loadLocal();render()}
+function lockApp(){backToPin('')}
+function accountTools(){return remote?'<div class="acct"><button class="btn sm" data-act="lock">ล็อกหน้าจอ</button></div>':''}
+function viewPin(){
+  return `<form id="pinForm" class="panel" style="max-width:340px;width:100%;margin:10vh auto 0;display:flex;flex-direction:column;gap:12px;text-align:center" novalidate><div><h1>Social Eyewear</h1><p class="sub">ใส่รหัส 4 หลักเพื่อเข้าโปรแกรม</p></div><input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="รหัส 4 หลัก" style="text-align:center;font-size:1.6rem;letter-spacing:.5em;min-height:52px"><div class="error" id="pinErr" role="alert"></div><button class="btn primary">เข้าโปรแกรม</button></form>`;
 }
-function viewLogin(){
-  return `<form id="loginForm" class="panel" style="max-width:380px;width:100%;margin:8vh auto 0;display:flex;flex-direction:column;gap:12px" novalidate><div><h1>Social Eyewear</h1><p class="sub">เข้าสู่ระบบบัญชีร้าน</p></div><label>อีเมล<input id="li_email" type="email" autocomplete="username" required></label><label>รหัสผ่าน<input id="li_pass" type="password" autocomplete="current-password" required></label><div class="error" id="liErr" role="alert">${esc(loginErr)}</div><button class="btn primary">เข้าสู่ระบบ</button></form>`;
+async function checkPin(){
+  const inp=$('#pinInput'),err=$('#pinErr');if(pinBusy||!inp.value)return;
+  pinBusy=true;err.textContent='กำลังตรวจรหัส';const v=inp.value;
+  try{await rpc('app_login',{p_pin:v});PIN=v;savePin(v);pinBusy=false;await enterApp();return}
+  catch(e){
+    inp.value='';inp.focus();
+    err.textContent=e.code==='bad_pin'?'รหัสไม่ถูกต้อง':e.code==='locked'?'ใส่รหัสผิดหลายครั้ง ระบบล็อกชั่วคราว 30 นาที':e.code==='http'&&(e.status===404||e.status===401)?'ระบบยังตั้งค่าฐานข้อมูลไม่ครบ ตรวจการรัน SQL และคีย์ใน config.js':'เชื่อมต่อไม่ได้ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง';
+  }
+  pinBusy=false;
+}
+async function boot(){
+  if(!remote){mode='local';loadLocal();render();return}
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh()});
+  PIN=readPin();
+  if(PIN){await enterApp();return}
+  mode='pin';render();const i=$('#pinInput');if(i)i.focus();
 }
 
 /* ---------- สถานะหน้าจอ ---------- */
@@ -335,7 +358,6 @@ function notices(){
   if(mode==='loading')h+=`<div class="notice">กำลังโหลดข้อมูลร้าน</div>`;
   if(mode==='error')h+=`<div class="notice err"><span>โหลดข้อมูลไม่สำเร็จ ตรวจอินเทอร์เน็ตหรือการตั้งค่า Supabase</span><button class="btn sm" data-act="retry">ลองอีกครั้ง</button></div>`;
   if(mode==='stale')h+=`<div class="notice"><span>เชื่อมต่อไม่ได้ ตัวเลขบนจออาจไม่เป็นปัจจุบัน</span><button class="btn sm" data-act="retry">โหลดใหม่</button></div>`;
-  if(notMember)h+=`<div class="notice err">บัญชี ${esc(userEmail)} ยังไม่ได้รับสิทธิ์ใช้งาน ขอให้เจ้าของเพิ่มอีเมลนี้ในตาราง app_members</div>`;
   const exN=COLS.reduce((n,c)=>n+S[c].filter(x=>x.example).length,0);
   if(exN)h+=`<div class="notice"><span>ตอนนี้เป็น<b>ข้อมูลตัวอย่าง</b> ${exN} รายการ ทั้งชื่อลูกค้าและราคาสมมติขึ้น เพื่อให้เห็นการทำงาน ลบได้เมื่อพร้อมใช้จริง</span><button class="btn sm ${confirmEx?'danger':''}" data-act="clear-ex">${confirmEx?'กดอีกครั้งเพื่อยืนยันการลบ':'ลบข้อมูลตัวอย่าง'}</button></div>`;
   return h;
@@ -469,15 +491,17 @@ function viewProducts(){
   return `<div class="head"><div><h1>สินค้า</h1><p class="sub">ฐานข้อมูลกรอบและเลนส์ ใช้ดึงราคาตอนบันทึกการขาย</p></div><div class="tools"><button class="btn" data-act="paste">วางจาก Excel</button><button class="btn primary" data-act="new-product">+ เพิ่มสินค้า</button></div></div>
   ${notices()}
   <section class="panel"><div class="head" style="margin-bottom:8px"><div class="tools">${[['all','ทั้งหมด'],['lens','เลนส์'],['frame','กรอบ']].map(([k,v])=>`<button class="btn sm ${prodKind===k?'primary':''}" data-act="pkind" data-k="${k}">${v}</button>`).join('')}</div><input id="prodQ" class="search" type="search" placeholder="ค้นหายี่ห้อ รุ่น Coating" aria-label="ค้นหาสินค้า" value="${esc(prodQ)}"></div><div id="prodList">${prodList()}</div></section>
-  <section class="panel"><h2>สำรองข้อมูล</h2><p class="dim" style="margin:0 0 10px">เก็บสำเนาข้อมูลทั้งหมดของร้านเป็นไฟล์ หรือนำไฟล์สำรองกลับเข้าระบบ รายการที่มีอยู่แล้วจะถูกแทนด้วยข้อมูลในไฟล์</p><div class="tools"><button class="btn" data-act="backup">ดาวน์โหลดไฟล์สำรอง</button><label class="btn" style="display:inline-flex;justify-content:center;color:var(--fg);font-size:.95rem">กู้คืนจากไฟล์<input id="restoreFile" type="file" accept="application/json,.json" hidden></label></div></section>`;
+  <section class="panel"><h2>สำรองข้อมูล</h2><p class="dim" style="margin:0 0 10px">เก็บสำเนาข้อมูลทั้งหมดของร้านเป็นไฟล์ หรือนำไฟล์สำรองกลับเข้าระบบ รายการที่มีอยู่แล้วจะถูกแทนด้วยข้อมูลในไฟล์</p><div class="tools"><button class="btn" data-act="backup">ดาวน์โหลดไฟล์สำรอง</button><label class="btn" style="display:inline-flex;justify-content:center;color:var(--fg);font-size:.95rem">กู้คืนจากไฟล์<input id="restoreFile" type="file" accept="application/json,.json" hidden></label></div></section>
+  <section class="panel show-s"><h2>บัญชี</h2>${accountTools()}</section>`;
 }
 
 /* ---------- วาดหน้าจอ ---------- */
 function render(){
-  document.querySelector('.rail').hidden=mode==='login';
-  document.querySelector('.app').style.display=mode==='login'?'block':'';
-  if(mode==='login'){if(!$('#loginForm'))$('#main').innerHTML=viewLogin();return}
-  const out=sb?`<div class="acct"><span class="dim">${esc(userEmail)}</span><button class="btn sm" data-act="logout">ออกจากระบบ</button></div>`:'';
+  const gate=mode==='pin';
+  document.querySelector('.rail').hidden=gate;
+  document.querySelector('.app').style.display=gate?'block':'';
+  if(gate){if(!$('#pinForm'))$('#main').innerHTML=viewPin();return}
+  const out=accountTools();
   if($('#acct'))$('#acct').innerHTML=out;
   $('#nav').innerHTML=TABS.map(t=>`<a href="#${t[0]}" ${t[0]===tab?'aria-current="page"':''}><svg viewBox="0 0 24 24" aria-hidden="true">${t[3]}</svg><span class="long">${t[1]}</span><span class="short">${t[2]}</span></a>`).join('');
   const a=document.activeElement,fid=a&&a.id&&$('#main').contains(a)?a.id:null,sel=fid&&a.selectionStart!=null&&a.type!=='number'?a.selectionStart:null;
@@ -666,9 +690,8 @@ document.addEventListener('click',async ev=>{
     confirmEx=false;try{for(const c of COLS)for(const x of S[c].filter(y=>y.example))await del(c,x.id);toast('ลบข้อมูลตัวอย่างแล้ว')}catch(e){toast(errText(e))}
   }
   if(a==='export')exportCsv();
-  if(a==='retry'&&blocked){location.reload();return}
   if(a==='retry'){mode=mode==='stale'?'live':'loading';render();refresh()}
-  if(a==='logout'){await sb.auth.signOut()}
+  if(a==='lock')lockApp();
   if(a==='backup'){saveFile(`social-eyewear-backup-${today()}.json`,JSON.stringify({version:1,exportedAt:new Date().toISOString(),data:S},null,1),'application/json');toast('ดาวน์โหลดไฟล์สำรองแล้ว')}
 });
 document.addEventListener('keydown',ev=>{if(ev.key==='Enter'&&ev.target.matches('tr[data-act]'))ev.target.click()});
@@ -689,16 +712,8 @@ window.addEventListener('scroll',()=>tip.hidden=true,{passive:true});
 function saveFile(name,text,type){
   const u=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);
 }
-document.addEventListener('submit',async ev=>{
-  if(ev.target.id!=='loginForm')return;ev.preventDefault();
-  const btn=ev.target.querySelector('button.primary'),em=$('#li_email').value.trim(),pw=$('#li_pass').value;
-  if(!em||!pw){$('#liErr').textContent='กรุณากรอกอีเมลและรหัสผ่าน';return}
-  btn.disabled=true;$('#liErr').textContent='';
-  const{data,error}=await sb.auth.signInWithPassword({email:em,password:pw});
-  btn.disabled=false;
-  if(error){$('#liErr').textContent=error.status===400?'อีเมลหรือรหัสผ่านไม่ถูกต้อง':'เข้าสู่ระบบไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองอีกครั้ง';return}
-  $('#main').innerHTML='';await enter(data.session);
-});
+document.addEventListener('submit',ev=>{if(ev.target.id==='pinForm'){ev.preventDefault();checkPin()}});
+document.addEventListener('input',ev=>{if(ev.target.id==='pinInput'){ev.target.value=ev.target.value.replace(/\D/g,'');if(ev.target.value.length===4)checkPin()}});
 document.addEventListener('change',async ev=>{
   if(ev.target.id!=='restoreFile'||!ev.target.files[0])return;
   try{

@@ -1,6 +1,6 @@
-// ใส่ค่าจาก Supabase > Project Settings > API
-// ถ้าเว้นว่างไว้ แอปจะเก็บข้อมูลในเบราว์เซอร์เครื่องนี้เท่านั้น
+// ค่าจาก Supabase > Project Settings > API (publishable key เปิดเผยได้)
+// ห้ามใส่ service_role หรือ secret key ในไฟล์นี้
 window.SE_CONFIG = {
-  supabaseUrl: '',
-  supabaseAnonKey: ''
+  supabaseUrl: 'https://xxviqcsnmumzgvstnuaa.supabase.co',
+  supabaseAnonKey: 'sb_publishable_omS-OMLpxefXCUk_Cjz8Hg_c0xQj3dS'
 };
