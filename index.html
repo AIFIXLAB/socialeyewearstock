@@ -385,7 +385,7 @@ const SP_WEAR=['รายวัน','รายสองสัปดาห์','�
 const SP_KIND=['สายตาสั้น/ยาวทั่วไป','สายตาเอียง (Toric)','สายตายาว (Multifocal)','สายตาเอียง + สายตายาว','คอนแทคสี'];
 const isToric=k=>/เอียง/.test(k||''),isMulti=k=>/ยาว \(Multi|สายตายาว$/.test(k||'');
 const specialPower=r=>[r.sph?'SPH '+r.sph:'',r.cyl?'CYL '+r.cyl:'',r.axis!==''&&r.axis!=null?'AX '+r.axis:'',r.add?'ADD '+r.add:'',r.bc?'BC '+r.bc:'',r.dia?'DIA '+r.dia:''].filter(Boolean).join(' ');
-const eyeLabel=e=>e==='R'?'ขวา':e==='L'?'ซ้าย':'';
+const eyeLabel=e=>e==='R'?'ขวา':e==='L'?'ซ้าย':e==='B'?'ขวา/ซ้าย':'';
 const specialName=r=>`${eyeLabel(r.eye)?'ตา'+eyeLabel(r.eye)+' ':''}${[r.brand,r.model].filter(Boolean).join(' ')} ${specialPower(r)} × ${num(r.qty)} กล่อง (สั่งพิเศษ)`;
 const digits=v=>String(v||'').replace(/\D/g,'');
 let ctView='stock',spQ='';
@@ -741,7 +741,7 @@ function drawSpecial(){
   const sel=(id,list,val)=>`<select id="${id}">${list.map(o=>`<option ${o===val?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
   const inp=(id,val,ph,mode='decimal')=>`<input id="${id}" inputmode="${mode}" value="${esc(val)}" placeholder="${ph}">`;
   const rows=F.special.map((r,i)=>`<div class="ct-row"><div class="grid">
-    <label>ตา<select id="sp_${i}_eye"><option value="R" ${r.eye==='R'?'selected':''}>ขวา (R)</option><option value="L" ${r.eye==='L'?'selected':''}>ซ้าย (L)</option></select></label>
+    <label>ตา<select id="sp_${i}_eye"><option value="R" ${r.eye==='R'?'selected':''}>ขวา (R)</option><option value="L" ${r.eye==='L'?'selected':''}>ซ้าย (L)</option><option value="B" ${r.eye==='B'?'selected':''}>ขวา/ซ้าย ค่าเดียวกัน</option></select></label>
     <label>ยี่ห้อ<input id="sp_${i}_brand" list="dlSpBrand" value="${esc(r.brand)}"></label><label>รุ่น<input id="sp_${i}_model" value="${esc(r.model)}"></label>
     <label>ชนิด<select id="sp_${i}_wear"><option value="">เลือก</option>${SP_WEAR.map(o=>`<option ${o===r.wear?'selected':''}>${o}</option>`).join('')}</select></label>
     <label>แบบเลนส์${sel(`sp_${i}_kind`,SP_KIND,r.kind)}</label></div>
