@@ -160,6 +160,8 @@ legend{font:600 .9rem var(--display);padding-inline:5px;display:flex;align-items
 .ct-cell small{font-size:.68rem;color:var(--muted)}
 .ct-cell.low{background:var(--cost-soft);border-color:var(--cost)}.ct-cell.low small{color:var(--cost);font-weight:600}
 .ct-cell.out{background:var(--loss-soft);border-color:var(--loss)}.ct-cell.out small{color:var(--loss);font-weight:600}
+.sp-order{display:flex;flex-direction:column;gap:6px;padding-block:12px;border-top:1px solid var(--line)}
+.sp-order:first-child{border-top:0;padding-top:0}
 .ct-recv{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
 .bars{display:flex;flex-direction:column;gap:7px}
 @media(max-width:820px){
@@ -219,7 +221,7 @@ const dLong=k=>pDate(k).toLocaleDateString('th-TH',{weekday:'long',day:'numeric'
 function calcSale(s){
   const fs=s.frame?num(s.frame.price):0, ls=s.lens?num(s.lens.price):0;
   const fc=s.frame?num(s.frame.cost):0, lc=s.lens?num(s.lens.cost):0;
-  const ct=Array.isArray(s.contact)?s.contact:[];
+  const ct=(Array.isArray(s.contact)?s.contact:[]).concat(Array.isArray(s.special)?s.special:[]);
   const cs=ct.reduce((a,r)=>a+num(r.qty)*num(r.price),0), cc=ct.reduce((a,r)=>a+num(r.qty)*num(r.cost),0);
   const discount=num(s.discount), gross=fs+ls+cs, revenue=gross-discount, cogs=fc+lc+cc;
   const direct=num(s.accessory)+num(s.labor)+num(s.other);
@@ -379,6 +381,14 @@ const powerNum=p=>{const n=parseFloat(p);return Number.isFinite(n)?n:-999};
 const contactProducts=()=>S.products.filter(p=>p.kind==='contact');
 const groupKey=p=>(p.brand||'')+'|'+(p.model||'');
 const contactName=r=>`${[r.brand,r.model].filter(Boolean).join(' ')} ${r.power||''} × ${num(r.qty)} กล่อง`;
+const SP_WEAR=['รายวัน','รายสองสัปดาห์','รายเดือน','รายปี'];
+const SP_KIND=['สายตาสั้น/ยาวทั่วไป','สายตาเอียง (Toric)','สายตายาว (Multifocal)','สายตาเอียง + สายตายาว','คอนแทคสี'];
+const isToric=k=>/เอียง/.test(k||''),isMulti=k=>/ยาว \(Multi|สายตายาว$/.test(k||'');
+const specialPower=r=>[r.sph?'SPH '+r.sph:'',r.cyl?'CYL '+r.cyl:'',r.axis!==''&&r.axis!=null?'AX '+r.axis:'',r.add?'ADD '+r.add:'',r.bc?'BC '+r.bc:'',r.dia?'DIA '+r.dia:''].filter(Boolean).join(' ');
+const eyeLabel=e=>e==='R'?'ขวา':e==='L'?'ซ้าย':'';
+const specialName=r=>`${eyeLabel(r.eye)?'ตา'+eyeLabel(r.eye)+' ':''}${[r.brand,r.model].filter(Boolean).join(' ')} ${specialPower(r)} × ${num(r.qty)} กล่อง (สั่งพิเศษ)`;
+const digits=v=>String(v||'').replace(/\D/g,'');
+let ctView='stock',spQ='';
 function soldMap(exceptSaleId){const m=new Map();S.sales.forEach(s=>{if(s.id===exceptSaleId)return;(s.contact||[]).forEach(r=>{if(r.productId)m.set(r.productId,(m.get(r.productId)||0)+num(r.qty))})});return m}
 const stockOf=(p,m)=>(p.stockIn||[]).reduce((a,x)=>a+num(x.qty),0)-(m.get(p.id)||0);
 const minOf=p=>p.minStock==null||p.minStock===''?1:num(p.minStock);
@@ -446,11 +456,11 @@ function viewCalendar(){
 /* ---------- รายการขาย ---------- */
 function salesTable(list,noDate){
   return `<div class="tw"><table><thead><tr>${noDate?'':'<th>วันที่</th>'}<th>ใบเสร็จ / ลูกค้า</th><th class="hide-s">กรอบ / เลนส์</th><th class="r">ยอดขาย</th><th class="r hide-s">ทุนสินค้า</th><th class="r">กำไรขั้นต้น</th></tr></thead><tbody>${list.map(s=>{const c=calcSale(s);
-    return `<tr class="click" data-act="edit-sale" data-id="${esc(s.id)}" tabindex="0">${noDate?'':`<td style="white-space:nowrap">${esc(dLabel(s.date))}</td>`}<td><b>${esc(s.receipt||'–')}</b> ${s.example?'<span class="chip ex">ตัวอย่าง</span>':''}<div class="dim">${esc(s.customer||'ไม่ระบุชื่อ')}${s.seller?' · '+esc(s.seller):''}</div></td><td class="hide-s" style="min-width:170px">${s.frame?`<div>${esc(frameName(s.frame))}</div>`:''}${s.lens?`<div>${esc(lensName(s.lens))} <span class="dim">${esc(lensSpec(s.lens))}</span></div>`:''}${(s.contact||[]).map(r=>`<div>${esc(contactName(r))}</div>`).join('')}</td><td class="r">${money(c.revenue)}</td><td class="r hide-s">${money(c.cogs)}</td><td class="r"><b class="${c.grossProfit<0?'c-loss':'c-profit'}">${money(c.grossProfit)}</b></td></tr>`}).join('')}</tbody></table></div>`;
+    return `<tr class="click" data-act="edit-sale" data-id="${esc(s.id)}" tabindex="0">${noDate?'':`<td style="white-space:nowrap">${esc(dLabel(s.date))}</td>`}<td><b>${esc(s.receipt||'–')}</b> ${s.example?'<span class="chip ex">ตัวอย่าง</span>':''}<div class="dim">${esc(s.customer||'ไม่ระบุชื่อ')}${s.phone?' · '+esc(s.phone):''}${s.seller?' · '+esc(s.seller):''}</div></td><td class="hide-s" style="min-width:170px">${s.frame?`<div>${esc(frameName(s.frame))}</div>`:''}${s.lens?`<div>${esc(lensName(s.lens))} <span class="dim">${esc(lensSpec(s.lens))}</span></div>`:''}${(s.contact||[]).map(r=>`<div>${esc(contactName(r))}</div>`).join('')}${(s.special||[]).map(r=>`<div>${esc(specialName(r))}</div>`).join('')}</td><td class="r">${money(c.revenue)}</td><td class="r hide-s">${money(c.cogs)}</td><td class="r"><b class="${c.grossProfit<0?'c-loss':'c-profit'}">${money(c.grossProfit)}</b></td></tr>`}).join('')}</tbody></table></div>`;
 }
 function salesList(){
   const q=salesQ.trim().toLowerCase();
-  const l=inMonth(S.sales,ym).filter(s=>!q||[s.receipt,s.customer,s.seller,s.frame&&frameName(s.frame),s.lens&&lensName(s.lens),(s.contact||[]).map(contactName).join(' ')].join(' ').toLowerCase().includes(q)).sort(byDateDesc);
+  const l=inMonth(S.sales,ym).filter(s=>!q||[s.receipt,s.customer,s.phone,s.seller,s.frame&&frameName(s.frame),s.lens&&lensName(s.lens),(s.contact||[]).map(contactName).join(' '),(s.special||[]).map(specialName).join(' ')].join(' ').toLowerCase().includes(q)).sort(byDateDesc);
   if(!l.length)return `<div class="empty">${q?'ไม่พบรายการที่ค้นหา':'ยังไม่มีรายการขายเดือนนี้ กด “+ เพิ่มรายการขาย” เพื่อเริ่มบันทึกบิลแรก'}</div>`;
   return salesTable(l);
 }
@@ -561,17 +571,27 @@ function viewContact(){
     const p0=l[0],total=l.reduce((a,p)=>a+stockOf(p,m),0);
     const cells=l.sort((a,b)=>powerNum(b.power)-powerNum(a.power)).map(p=>{const st=stockOf(p,m),c=statusOf(st,p);return `<button class="ct-cell ${c}" data-act="ct-item" data-id="${esc(p.id)}" aria-label="ค่าสายตา ${esc(p.power)} คงเหลือ ${st} กล่อง ${stLabel[c]}"><span>${esc(p.power)}</span><b>${st}</b><small>${stLabel[c]||'กล่อง'}</small></button>`}).join('');
     return `<div class="ct-group"><div class="head"><div><h3>${esc(p0.brand)} ${esc(p0.model)} ${p0.type?`<span class="dim">${esc(p0.type)}</span>`:''}</h3><span class="dim">คงเหลือรวม ${total} กล่อง · ทุน ${money(num(p0.cost))} · ขาย ${money(num(p0.price))} บาท/กล่อง</span></div><div class="tools"><button class="btn sm primary" data-act="ct-receive" data-g="${esc(k)}">+ รับสินค้าเข้า</button><button class="btn sm" data-act="ct-model" data-g="${esc(k)}">แก้รุ่น / เพิ่มค่าสายตา</button></div></div><div class="ct-cells">${cells}</div></div>`}).join('');
-  const lines=inMonth(S.sales,ym).sort(byDateDesc).flatMap(s=>{const c=calcSale(s);return (s.contact||[]).map(r=>({s,r,rev:num(r.qty)*num(r.price)*c.ratio,cost:num(r.qty)*num(r.cost)}))});
+  const lines=inMonth(S.sales,ym).sort(byDateDesc).flatMap(s=>{const c=calcSale(s);return (s.contact||[]).map(r=>({s,r,label:contactName(r),rev:num(r.qty)*num(r.price)*c.ratio,cost:num(r.qty)*num(r.cost)})).concat((s.special||[]).map(r=>({s,r:{...r,power:specialPower(r)+' (สั่งพิเศษ)'},label:specialName(r),rev:num(r.qty)*num(r.price)*c.ratio,cost:num(r.qty)*num(r.cost)})))});
   const boxes=lines.reduce((a,x)=>a+num(x.r.qty),0),rev=lines.reduce((a,x)=>a+x.rev,0),cost=lines.reduce((a,x)=>a+x.cost,0);
   const byPower=new Map();lines.forEach(x=>{const k=[x.r.brand,x.r.model,x.r.power].join('|');const o=byPower.get(k)||{name:`${x.r.brand} ${x.r.model}`,power:x.r.power,qty:0,rev:0,profit:0};o.qty+=num(x.r.qty);o.rev+=x.rev;o.profit+=x.rev-x.cost;byPower.set(k,o)});
   const pw=[...byPower.values()].sort((a,b)=>b.qty-a.qty||a.name.localeCompare(b.name));
-  return `<div class="head"><div><h1>คอนแทคเลนส์</h1><p class="sub">สต็อกแยกตามค่าสายตา ขายแล้วตัดสต็อกให้อัตโนมัติ</p></div><div class="tools">${monthNav()}<button class="btn" data-act="ct-model">+ เพิ่มรุ่นใหม่</button><button class="btn primary" data-act="new-contact-sale">+ ขายคอนแทคเลนส์</button></div></div>
-  ${notices()}
+  const tabs=`<div class="tools" role="tablist"><button class="btn sm ${ctView==='stock'?'primary':''}" data-act="ct-tab" data-v="stock" role="tab" aria-selected="${ctView==='stock'}">สต็อกในร้าน</button><button class="btn sm ${ctView==='special'?'primary':''}" data-act="ct-tab" data-v="special" role="tab" aria-selected="${ctView==='special'}">สั่งพิเศษย้อนหลัง</button></div>`;
+  if(ctView==='special')return `<div class="head"><div><h1>คอนแทคเลนส์</h1><p class="sub">ประวัติการสั่งพิเศษ ไม่มีสต็อก สั่งคู่ต่อคู่</p></div><div class="tools"><button class="btn primary" data-act="new-special-sale">+ ขายแบบสั่งพิเศษ</button></div></div>${tabs}${notices()}
+  <section class="panel"><div class="head" style="margin-bottom:8px"><h2>สั่งพิเศษย้อนหลังทั้งหมด</h2><input id="spQ" class="search" type="search" placeholder="ค้นหาชื่อหรือเบอร์โทรลูกค้า" aria-label="ค้นหาชื่อหรือเบอร์โทรลูกค้า" value="${esc(spQ)}"></div><div id="spList">${specialList()}</div></section>`;
+  return `<div class="head"><div><h1>คอนแทคเลนส์</h1><p class="sub">สต็อกแยกตามค่าสายตา ขายแล้วตัดสต็อกให้อัตโนมัติ</p></div><div class="tools">${monthNav()}<button class="btn" data-act="ct-model">+ เพิ่มรุ่นใหม่</button><button class="btn" data-act="new-special-sale">+ ขายแบบสั่งพิเศษ</button><button class="btn primary" data-act="new-contact-sale">+ ขายคอนแทคเลนส์</button></div></div>
+  ${tabs}${notices()}
   <div class="tiles"><div class="tile"><span>ขายใน${esc(ymLabel(ym))}</span><b>${boxes} กล่อง</b></div><div class="tile"><span>ยอดขายคอนแทคเลนส์</span><b>${money(rev)}</b><small>หลังเฉลี่ยส่วนลด</small></div><div class="tile"><span>กำไรขั้นต้น</span><b>${money(rev-cost)}</b></div><div class="tile"><span>คงเหลือทั้งร้าน</span><b>${ps.reduce((a,p)=>a+stockOf(p,m),0)} กล่อง</b><small>${al.length} ค่าสายตาต้องสั่งเพิ่ม</small></div></div>
   ${al.length?`<section class="panel"><div class="head" style="margin-bottom:8px"><h2>ต้องสั่งเพิ่ม ${al.length} ค่าสายตา</h2><button class="btn sm" data-act="ct-copy-order">คัดลอกรายการสั่งซื้อ</button></div><div class="tw"><table><thead><tr><th>รุ่น</th><th>ค่าสายตา</th><th class="r">คงเหลือ</th><th>สถานะ</th></tr></thead><tbody>${al.map(x=>`<tr class="click" data-act="ct-item" data-id="${esc(x.p.id)}" tabindex="0"><td>${esc(x.p.brand)} ${esc(x.p.model)}</td><td>${esc(x.p.power)}</td><td class="r">${x.st}</td><td><span class="chip ${x.status==='out'?'loss':'ex'}">${stLabel[x.status]}</span></td></tr>`).join('')}</tbody></table></div></section>`:''}
   <section class="panel"><h2>สต็อกคงเหลือ</h2>${stockHtml||'<div class="empty">ยังไม่มีคอนแทคเลนส์ กด “+ เพิ่มรุ่นใหม่” แล้วใส่ช่วงค่าสายตาและจำนวนในสต็อก</div>'}</section>
   <div class="two"><section class="panel"><h2>ขายค่าสายตาอะไรบ้าง</h2>${pw.length?`<div class="tw"><table><thead><tr><th>รุ่น</th><th>ค่าสายตา</th><th class="r">กล่อง</th><th class="r">ยอดขาย</th><th class="r">กำไร</th></tr></thead><tbody>${pw.map(o=>`<tr><td>${esc(o.name)}</td><td>${esc(o.power)}</td><td class="r">${o.qty}</td><td class="r">${money(o.rev)}</td><td class="r">${money(o.profit)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">เดือนนี้ยังไม่มีการขายคอนแทคเลนส์</div>'}</section>
-  <section class="panel"><h2>รายการขายของเดือน</h2>${lines.length?`<div class="tw"><table><thead><tr><th>วันที่</th><th>ลูกค้า</th><th>รายการ</th></tr></thead><tbody>${lines.map(x=>`<tr class="click" data-act="edit-sale" data-id="${esc(x.s.id)}" tabindex="0"><td style="white-space:nowrap">${esc(dLabel(x.s.date))}</td><td>${esc(x.s.customer||'ไม่ระบุชื่อ')}</td><td>${esc(contactName(x.r))}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">รายการจะแสดงเมื่อมีการขาย</div>'}</section></div>`;
+  <section class="panel"><h2>รายการขายของเดือน</h2>${lines.length?`<div class="tw"><table><thead><tr><th>วันที่</th><th>ลูกค้า</th><th>รายการ</th></tr></thead><tbody>${lines.map(x=>`<tr class="click" data-act="edit-sale" data-id="${esc(x.s.id)}" tabindex="0"><td style="white-space:nowrap">${esc(dLabel(x.s.date))}</td><td>${esc(x.s.customer||'ไม่ระบุชื่อ')}</td><td>${esc(x.label)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">รายการจะแสดงเมื่อมีการขาย</div>'}</section></div>`;
+}
+function specialList(){
+  const q=spQ.trim().toLowerCase(),qd=digits(spQ);
+  const l=S.sales.filter(s=>(s.special||[]).length&&(!q||(s.customer||'').toLowerCase().includes(q)||(qd.length>=3&&digits(s.phone).includes(qd)))).sort(byDateDesc);
+  if(!l.length)return `<div class="empty">${q?'ไม่พบลูกค้าที่ค้นหา':'ยังไม่มีการขายแบบสั่งพิเศษ กด “+ ขายแบบสั่งพิเศษ” เพื่อบันทึกรายการแรก'}</div>`;
+  return l.map(s=>{const c=calcSale(s);return `<div class="sp-order"><div class="head"><div><b>${esc(s.customer||'ไม่ระบุชื่อ')}</b> <span class="dim">${esc(s.phone||'ไม่มีเบอร์')}</span><div class="dim">${esc(dLabel(s.date))} · ใบเสร็จ ${esc(s.receipt||'–')} · ${money(c.revenue)} บาท</div></div><div class="tools"><button class="btn sm" data-act="edit-sale" data-id="${esc(s.id)}">ดู / แก้ไข</button><button class="btn sm primary" data-act="sp-reorder" data-id="${esc(s.id)}">สั่งซ้ำ</button></div></div>
+  <div class="tw"><table><thead><tr><th>ตา</th><th>ยี่ห้อ / รุ่น</th><th>แบบ</th><th>SPH</th><th>CYL</th><th>AXIS</th><th>ADD</th><th>BC</th><th>DIA</th><th class="r">กล่อง</th></tr></thead><tbody>${s.special.map(r=>`<tr><td>${esc(eyeLabel(r.eye))}</td><td>${esc([r.brand,r.model].filter(Boolean).join(' '))}</td><td>${esc([r.wear,r.kind].filter(Boolean).join(' · '))}</td><td>${esc(r.sph||'–')}</td><td>${esc(r.cyl||'–')}</td><td>${esc(r.axis||'–')}</td><td>${esc(r.add||'–')}</td><td>${esc(r.bc||'–')}</td><td>${esc(r.dia||'–')}</td><td class="r">${num(r.qty)}</td></tr>`).join('')}</tbody></table></div>${s.note?`<div class="dim">หมายเหตุ: ${esc(s.note)}</div>`:''}</div>`}).join('');
 }
 function copyOrder(){
   const txt=contactAlerts().map(x=>`${x.p.brand} ${x.p.model} ${x.p.power} (เหลือ ${x.st})`).join('\n');
@@ -584,7 +604,7 @@ function openContactModel(g){
    <div class="grid"><label>ยี่ห้อ<input id="c_brand" value="${esc(p?.brand)}"></label><label>รุ่น<input id="c_model" value="${esc(p?.model)}"></label><label>ชนิด<input id="c_type" list="dlCtType" placeholder="เช่น รายเดือน" value="${esc(p?.type)}"><datalist id="dlCtType"><option value="รายวัน"></option><option value="รายสองสัปดาห์"></option><option value="รายเดือน"></option><option value="รายปี"></option></datalist></label></div>
    <div class="grid"><label>ราคาทุนต่อกล่อง<input id="c_cost" type="number" min="0" step="any" inputmode="decimal" value="${esc(p?.cost)}"></label><label>ราคาขายต่อกล่อง<input id="c_price" type="number" min="0" step="any" inputmode="decimal" value="${esc(p?.price)}"></label><label>เตือนเมื่อเหลือไม่เกิน (กล่อง)<input id="c_min" type="number" min="0" step="1" inputmode="numeric" value="${p?minOf(p):1}"></label></div>
    <fieldset><legend>${g?'เพิ่มค่าสายตาใหม่ (เว้นว่างได้)':'ค่าสายตาที่มีในร้าน'}</legend><div class="grid"><label>ตั้งแต่<input id="c_from" inputmode="decimal" value="${g?'':'-0.50'}"></label><label>ถึง<input id="c_to" inputmode="decimal" value="${g?'':'-6.00'}"></label><label>ห่างทีละ<input id="c_step" inputmode="decimal" value="0.25"></label><label>จำนวนเริ่มต้นต่อค่าสายตา<input id="c_init" type="number" min="0" step="1" inputmode="numeric" value="0"></label></div><label>ค่าสายตาอื่นเพิ่มเติม คั่นด้วยจุลภาค<input id="c_extra" placeholder="เช่น -6.50, -7.00"></label>${g?`<p class="dim" style="margin:0">มีอยู่แล้ว ${l.length} ค่าสายตา ราคาและการเตือนด้านบนจะใช้กับทุกค่าสายตาของรุ่นนี้</p>`:''}</fieldset>
-   ${dlgFoot(null,'products')}</form>`);
+   ${dlgFoot(null,'products',g?`<button type="button" class="btn danger" data-act="ct-del-model" data-g="${esc(g)}">ลบรุ่นนี้ทั้งหมด</button>`:'')}</form>`);
 }
 function powersFromForm(){
   const fr=$('#c_from').value.trim(),to=$('#c_to').value.trim(),out=[];
@@ -644,25 +664,27 @@ function nextReceipt(date){
 }
 function openSale(s,date,contactMode){
   const d=date||s?.date||today();
-  F={id:s?.id||null,example:!!s?.example,date:d,receipt:s?.receipt||nextReceipt(d),autoReceipt:!s,customer:s?.customer||'',seller:s?.seller||'',
+  F={id:s?.id||null,example:!!s?.example,date:d,receipt:s?.receipt||nextReceipt(d),autoReceipt:!s,customer:s?.customer||'',phone:s?.phone||'',seller:s?.seller||'',special:(s?.special||[]).map(r=>({...r})),
      contact:(s?.contact||[]).map(r=>({...r})),frame:{on:s?!!s.frame:!contactMode,manual:false,brand:'',model:'',color:'',cost:'',price:'',productId:null,...(s?.frame||{})},
      lens:{on:s?!!s.lens:!contactMode,manual:false,brand:'',model:'',coating:'',index:'',cost:'',price:'',productId:null,...(s?.lens||{})},
      accessory:s?.accessory||'',labor:s?.labor||'',discount:s?.discount||'',other:s?.other||'',note:s?.note||''};
   const names=f=>[...new Set(S.sales.map(x=>x[f]).filter(Boolean))].sort().map(x=>`<option value="${esc(x)}"></option>`).join('');
-  openDlg(`<form id="saleForm" novalidate>${dlgHead(s?'แก้ไขรายการขาย':'เพิ่มรายการขาย')}
+  openDlg(`<form id="saleForm" novalidate>${dlgHead(s?'แก้ไขรายการขาย':contactMode==='special'?'ขายคอนแทคเลนส์สั่งพิเศษ':'เพิ่มรายการขาย')}
    <fieldset><legend>ข้อมูลการขาย</legend><div class="grid">
     <label>วันที่ขาย<input id="f_date" type="date" required value="${esc(F.date)}"></label>
     <label>เลขที่ใบเสร็จ / ออเดอร์<input id="f_receipt" required value="${esc(F.receipt)}"></label>
     <label>ชื่อลูกค้า<input id="f_customer" list="dlCust" value="${esc(F.customer)}"></label>
+    <label>เบอร์โทรลูกค้า<input id="f_phone" type="tel" inputmode="tel" autocomplete="off" value="${esc(F.phone)}"></label>
     <label>พนักงานขาย<input id="f_seller" list="dlSeller" value="${esc(F.seller)}"></label>
     <datalist id="dlCust">${names('customer')}</datalist><datalist id="dlSeller">${names('seller')}</datalist></div></fieldset>
-   <fieldset id="fsFrame"></fieldset><fieldset id="fsLens"></fieldset><fieldset id="fsContact"></fieldset>
+   <fieldset id="fsFrame"></fieldset><fieldset id="fsLens"></fieldset><fieldset id="fsContact"></fieldset><fieldset id="fsSpecial"></fieldset>
    <fieldset><legend>ค่าใช้จ่ายเพิ่มเติม</legend><div class="grid">
     ${[['accessory','ค่าอุปกรณ์'],['labor','ค่าทำงาน / ค่าแรง'],['discount','ส่วนลด'],['other','ค่าบริการรูดบัตร']].map(([k,l])=>`<label>${l}<input id="f_${k}" type="number" min="0" step="any" inputmode="decimal" value="${esc(F[k])}" placeholder="0"></label>`).join('')}</div>
     <label>หมายเหตุ<input id="f_note" value="${esc(F.note)}"></label></fieldset>
    <div class="calc" id="calc"></div>${dlgFoot(F.id,'sales')}</form>`);
-  if(contactMode&&!F.contact.length)F.contact.push(blankCt());
-  drawPart('frame');drawPart('lens');drawContact();drawCalc();
+  if(contactMode===true&&!F.contact.length)F.contact.push(blankCt());
+  if(contactMode==='special'&&!F.special.length)F.special.push(blankSp('R'));
+  drawPart('frame');drawPart('lens');drawContact();drawSpecial();drawCalc();
 }
 const moneyInputs=(p,it)=>`<div class="grid"><label>ราคาทุน<input id="${p}_cost" type="number" min="0" step="any" inputmode="decimal" value="${esc(it.cost)}"></label><label>ราคาขาย<input id="${p}_price" type="number" min="0" step="any" inputmode="decimal" value="${esc(it.price)}"></label></div>`;
 function drawPart(p){
@@ -712,9 +734,25 @@ function onCtPick(i,key,val){
   if(r.power){const p=list.find(x=>x.brand===r.brand&&x.model===r.model&&x.power===r.power);if(p){r.productId=p.id;r.price=p.price;r.cost=p.cost;r.type=p.type||''}}
   drawContact();drawCalc();
 }
+const blankSp=(eye,from)=>({eye:eye||'R',brand:from?.brand||'',model:from?.model||'',wear:from?.wear||'',kind:from?.kind||SP_KIND[0],sph:'',cyl:'',axis:'',add:'',bc:from?.bc||'',dia:from?.dia||'',qty:from?.qty||1,price:from?.price??'',cost:from?.cost??''});
+function drawSpecial(){
+  const fs=$('#fsSpecial');if(!fs)return;
+  const brands=[...new Set(S.sales.flatMap(x=>(x.special||[]).map(r=>r.brand)).filter(Boolean))].sort();
+  const sel=(id,list,val)=>`<select id="${id}">${list.map(o=>`<option ${o===val?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+  const inp=(id,val,ph,mode='decimal')=>`<input id="${id}" inputmode="${mode}" value="${esc(val)}" placeholder="${ph}">`;
+  const rows=F.special.map((r,i)=>`<div class="ct-row"><div class="grid">
+    <label>ตา<select id="sp_${i}_eye"><option value="R" ${r.eye==='R'?'selected':''}>ขวา (R)</option><option value="L" ${r.eye==='L'?'selected':''}>ซ้าย (L)</option></select></label>
+    <label>ยี่ห้อ<input id="sp_${i}_brand" list="dlSpBrand" value="${esc(r.brand)}"></label><label>รุ่น<input id="sp_${i}_model" value="${esc(r.model)}"></label>
+    <label>ชนิด<select id="sp_${i}_wear"><option value="">เลือก</option>${SP_WEAR.map(o=>`<option ${o===r.wear?'selected':''}>${o}</option>`).join('')}</select></label>
+    <label>แบบเลนส์${sel(`sp_${i}_kind`,SP_KIND,r.kind)}</label></div>
+    <div class="grid"><label>SPH (สั้น/ยาว)${inp(`sp_${i}_sph`,r.sph,'-2.00')}</label><label>CYL (เอียง)${inp(`sp_${i}_cyl`,r.cyl,isToric(r.kind)?'จำเป็น':'ถ้ามี')}</label><label>AXIS (องศา)${inp(`sp_${i}_axis`,r.axis,isToric(r.kind)?'จำเป็น':'ถ้ามี','numeric')}</label><label>ADD (สายตายาว)${inp(`sp_${i}_add`,r.add,isMulti(r.kind)?'จำเป็น':'ถ้ามี')}</label><label>BC${inp(`sp_${i}_bc`,r.bc,'8.6')}</label><label>DIA${inp(`sp_${i}_dia`,r.dia,'14.2')}</label></div>
+    <div class="grid"><label>จำนวน (กล่อง)<input id="sp_${i}_qty" type="number" min="1" step="1" inputmode="numeric" value="${esc(r.qty)}"></label><label>ราคาขายต่อกล่อง<input id="sp_${i}_price" type="number" min="0" step="any" inputmode="decimal" value="${esc(r.price)}"></label><label>ราคาทุนต่อกล่อง<input id="sp_${i}_cost" type="number" min="0" step="any" inputmode="decimal" value="${esc(r.cost)}"></label></div>
+    <div class="ct-foot"><span class="dim">ไม่ตัดสต็อก</span><button type="button" class="btn sm" data-act="sp-del" data-i="${i}">ลบแถวนี้</button></div></div>`).join('');
+  fs.innerHTML=`<legend>คอนแทคเลนส์สั่งพิเศษ</legend><datalist id="dlSpBrand">${brands.map(b=>`<option value="${esc(b)}"></option>`).join('')}</datalist>${rows}<div class="tools"><button type="button" class="btn sm" data-act="sp-add">+ สั่งพิเศษ${F.special.length?' อีกข้าง':' (ไม่ตัดสต็อก)'}</button></div>`;
+}
 function formSale(){
   const pick=p=>{const it=F[p];if(!it.on)return null;const{on,manual,...r}=it;return{...r,cost:num(it.cost),price:num(it.price)}};
-  return {date:F.date,receipt:F.receipt.trim(),customer:F.customer.trim(),seller:F.seller.trim(),frame:pick('frame'),lens:pick('lens'),contact:F.contact.map(r=>({brand:r.brand,model:r.model,type:r.type||'',power:r.power,qty:num(r.qty),price:num(r.price),cost:num(r.cost),productId:r.productId||null})),accessory:num(F.accessory),labor:num(F.labor),discount:num(F.discount),other:num(F.other),note:F.note.trim(),...(F.example?{example:true}:{})};
+  return {date:F.date,receipt:F.receipt.trim(),customer:F.customer.trim(),seller:F.seller.trim(),frame:pick('frame'),lens:pick('lens'),phone:(F.phone||'').trim(),special:F.special.map(r=>({eye:r.eye,brand:String(r.brand||'').trim(),model:String(r.model||'').trim(),wear:r.wear||'',kind:r.kind||'',sph:normPower(r.sph),cyl:normPower(r.cyl),axis:String(r.axis??'').trim(),add:normPower(r.add),bc:String(r.bc||'').trim(),dia:String(r.dia||'').trim(),qty:num(r.qty),price:num(r.price),cost:num(r.cost)})),contact:F.contact.map(r=>({brand:r.brand,model:r.model,type:r.type||'',power:r.power,qty:num(r.qty),price:num(r.price),cost:num(r.cost),productId:r.productId||null})),accessory:num(F.accessory),labor:num(F.labor),discount:num(F.discount),other:num(F.other),note:F.note.trim(),...(F.example?{example:true}:{})};
 }
 function drawCalc(){
   const c=calcSale(formSale());
@@ -725,7 +763,15 @@ function validateSale(s,id){
   if(!s.date)return 'กรุณาเลือกวันที่ขาย';
   if(!s.receipt)return 'กรุณากรอกเลขที่ใบเสร็จ';
   if(S.sales.some(x=>x.receipt===s.receipt&&x.id!==id))return `เลขที่ใบเสร็จ ${s.receipt} มีอยู่แล้ว กรุณาใช้เลขอื่น`;
-  if(!s.frame&&!s.lens&&!s.contact.length)return 'เลือกกรอบ เลนส์ หรือคอนแทคเลนส์อย่างน้อยหนึ่งอย่าง';
+  if(!s.frame&&!s.lens&&!s.contact.length&&!s.special.length)return 'เลือกกรอบ เลนส์ หรือคอนแทคเลนส์อย่างน้อยหนึ่งอย่าง';
+  for(const r of s.special){const e='คอนแทคสั่งพิเศษตา'+eyeLabel(r.eye)+': ';
+    if(!r.brand&&!r.model)return e+'กรุณากรอกยี่ห้อหรือรุ่น';
+    if(!r.sph)return e+'กรุณากรอกค่า SPH (ถ้าไม่มีสายตาใส่ 0)';
+    if(isToric(r.kind)&&(!r.cyl||r.axis===''))return e+'เลนส์สายตาเอียงต้องกรอก CYL และ AXIS';
+    if(r.axis!==''&&!(/^\d{1,3}$/.test(r.axis)&&+r.axis<=180))return e+'AXIS ต้องเป็นตัวเลข 0 ถึง 180';
+    if(isMulti(r.kind)&&!r.add)return e+'เลนส์สายตายาวต้องกรอกค่า ADD';
+    if(!Number.isInteger(r.qty)||r.qty<1)return e+'จำนวนต้องเป็นจำนวนเต็มตั้งแต่ 1 กล่องขึ้นไป';
+    if(r.price<0||r.cost<0)return 'จำนวนเงินต้องไม่ติดลบ'}
   if(s.contact.some(r=>!r.brand||!r.model||!r.power))return 'เลือกยี่ห้อ รุ่น และค่าสายตาของคอนแทคเลนส์ให้ครบ หรือลบแถวที่ไม่ใช้';
   if(s.contact.some(r=>!Number.isInteger(r.qty)||r.qty<1))return 'จำนวนคอนแทคเลนส์ต้องเป็นจำนวนเต็มตั้งแต่ 1 กล่องขึ้นไป';
   if(s.contact.some(r=>r.price<0||r.cost<0))return 'จำนวนเงินต้องไม่ติดลบ';
@@ -836,12 +882,15 @@ dlg.addEventListener('input',ev=>{
   const t=ev.target;
   if(t.id==='p_kind')return syncKind();
   if(!F||!$('#saleForm'))return;
+  const sp=t.id.match(/^sp_(\d+)_(\w+)$/);
+  if(sp){F.special[+sp[1]][sp[2]]=t.value;if(sp[2]==='kind'){const a=t.id;drawSpecial();const n=document.getElementById(a);if(n)n.focus()}drawCalc();return}
   const cm=t.id.match(/^ct_(\d+)_(qty|price|cost)$/);
   if(cm){F.contact[+cm[1]][cm[2]]=t.value;if(cm[2]==='qty'){const h=$('#ct_'+cm[1]+'_hint');const a=document.activeElement,id=a&&a.id;drawContact();const n=id&&document.getElementById(id);if(n){n.focus()}}drawCalc();return}
   const m=t.id.match(/^(frame|lens)_(.+)$/);
   if(m){if(m[2]==='on'||m[2]==='manual'||t.tagName==='SELECT')return;F[m[1]][m[2]]=t.value;drawCalc();return}
   if(t.id.startsWith('f_')){const k=t.id.slice(2);F[k]=t.value;
     if(k==='receipt')F.autoReceipt=false;
+    if(k==='customer'&&!F.phone){const nm=t.value.trim().toLowerCase(),prev=nm&&S.sales.filter(x=>(x.customer||'').trim().toLowerCase()===nm&&x.phone).sort(byDateDesc)[0];if(prev){F.phone=prev.phone;$('#f_phone').value=prev.phone}}
     if(k==='date'&&F.autoReceipt&&t.value){F.receipt=nextReceipt(t.value);$('#f_receipt').value=F.receipt}
     drawCalc()}
 });
@@ -862,6 +911,15 @@ document.addEventListener('click',async ev=>{
   if(a==='day'){selDay=b.dataset.k;if(selDay.slice(0,7)!==ym)ym=selDay.slice(0,7);render()}
   if(a==='new-sale')openSale(null,b.dataset.date||(ym===today().slice(0,7)?today():ym+'-01'));
   if(a==='new-contact-sale')openSale(null,ym===today().slice(0,7)?today():ym+'-01',true);
+  if(a==='new-special-sale')openSale(null,ym===today().slice(0,7)?today():ym+'-01','special');
+  if(a==='sp-add'){const last=F.special[F.special.length-1];F.special.push(blankSp(last&&last.eye==='R'?'L':'R',last));drawSpecial();drawCalc()}
+  if(a==='sp-del'){F.special.splice(+b.dataset.i,1);drawSpecial();drawCalc()}
+  if(a==='ct-tab'){ctView=b.dataset.v;render()}
+  if(a==='sp-reorder'){const o=find('sales');if(o){openSale(null,today(),'special');F.customer=o.customer||'';F.phone=o.phone||'';F.special=(o.special||[]).map(r=>({...r}));$('#f_customer').value=F.customer;$('#f_phone').value=F.phone;drawSpecial();drawCalc()}}
+  if(a==='ct-del-model'){
+    if(b.dataset.armed){b.disabled=true;try{for(const p of contactProducts().filter(x=>groupKey(x)===b.dataset.g))await del('products',p.id);dlg.close();toast('ลบรุ่นนี้แล้ว ประวัติการขายเดิมยังอยู่')}catch(e){$('#fErr').textContent=errText(e);b.disabled=false}}
+    else{b.dataset.armed='1';b.textContent='กดอีกครั้งเพื่อยืนยันการลบทั้งรุ่น'}
+  }
   if(a==='ct-add'){F.contact.push(blankCt());drawContact();drawCalc()}
   if(a==='ct-del'){F.contact.splice(+b.dataset.i,1);drawContact();drawCalc()}
   if(a==='ct-model')openContactModel(b.dataset.g||null);
@@ -893,6 +951,7 @@ document.addEventListener('click',async ev=>{
 });
 document.addEventListener('keydown',ev=>{if(ev.key==='Enter'&&ev.target.matches('tr[data-act]'))ev.target.click()});
 document.addEventListener('input',ev=>{
+  if(ev.target.id==='spQ'){spQ=ev.target.value;$('#spList').innerHTML=specialList()}
   if(ev.target.id==='salesQ'){salesQ=ev.target.value;$('#salesList').innerHTML=salesList()}
   if(ev.target.id==='prodQ'){prodQ=ev.target.value;$('#prodList').innerHTML=prodList()}
   if(ev.target.id==='lensBrand'){lensBrand=ev.target.value;render()}
@@ -925,8 +984,8 @@ function exportCsv(){
   const rows=inMonth(S.sales,ym).sort(byDateDesc);
   if(!rows.length)return toast('เดือนนี้ยังไม่มีรายการให้ส่งออก');
   const safe=v=>{let s=String(v??'');if(typeof v==='string'&&/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"'};
-  const h=['วันที่','ใบเสร็จ','ลูกค้า','พนักงานขาย','กรอบ','ทุนกรอบ','ขายกรอบ','เลนส์','Coating','Index','ทุนเลนส์','ขายเลนส์','ค่าอุปกรณ์','ค่าแรง','ส่วนลด','ค่าบริการรูดบัตร','คอนแทคเลนส์','ขายคอนแทคเลนส์','ทุนคอนแทคเลนส์','ยอดขาย','ต้นทุนสินค้า','กำไรขั้นต้น','กำไรของบิล'];
-  const csv='﻿'+[h.map(safe).join(',')].concat(rows.map(s=>{const c=calcSale(s);return [s.date,s.receipt,s.customer,s.seller,s.frame?frameName(s.frame):'',c.fc,c.fs,s.lens?lensName(s.lens):'',s.lens?.coating||'',s.lens?.index||'',c.lc,c.ls,num(s.accessory),num(s.labor),c.discount,num(s.other),(s.contact||[]).map(contactName).join(' / '),c.cs,c.cc,c.revenue,c.cogs,c.grossProfit,c.profit].map(safe).join(',')})).join('\r\n');
+  const h=['วันที่','ใบเสร็จ','ลูกค้า','เบอร์โทร','พนักงานขาย','กรอบ','ทุนกรอบ','ขายกรอบ','เลนส์','Coating','Index','ทุนเลนส์','ขายเลนส์','ค่าอุปกรณ์','ค่าแรง','ส่วนลด','ค่าบริการรูดบัตร','คอนแทคเลนส์','ขายคอนแทคเลนส์','ทุนคอนแทคเลนส์','ยอดขาย','ต้นทุนสินค้า','กำไรขั้นต้น','กำไรของบิล'];
+  const csv='﻿'+[h.map(safe).join(',')].concat(rows.map(s=>{const c=calcSale(s);return [s.date,s.receipt,s.customer,s.phone||'',s.seller,s.frame?frameName(s.frame):'',c.fc,c.fs,s.lens?lensName(s.lens):'',s.lens?.coating||'',s.lens?.index||'',c.lc,c.ls,num(s.accessory),num(s.labor),c.discount,num(s.other),(s.contact||[]).map(contactName).concat((s.special||[]).map(specialName)).join(' / '),c.cs,c.cc,c.revenue,c.cogs,c.grossProfit,c.profit].map(safe).join(',')})).join('\r\n');
   saveFile(`social-eyewear-sales-${ym}.csv`,csv,'text/csv;charset=utf-8');toast('ดาวน์โหลด CSV แล้ว');
 }
 boot();
