@@ -642,7 +642,7 @@ function render(){
   const out=accountTools();
   if($('#acct'))$('#acct').innerHTML=out;
   const alertN=contactAlerts().length;
-  $('#nav').innerHTML=TABS.map(t=>`<a href="#${t[0]}" ${t[0]===tab?'aria-current="page"':''}><svg viewBox="0 0 24 24" aria-hidden="true">${t[3]}</svg><span class="long">${t[1]}</span><span class="short">${t[2]}</span>${t[0]==='contact'&&alertN?`<span class="badge" aria-label="ต้องสั่งเพิ่ม ${alertN} รายการ">${alertN}</span>`:''}</a>`).join('');
+  $('#nav').innerHTML=TABS.map(t=>`<a href="#${t[0]}" ${t[0]===tab?'aria-current="page"':''}><svg viewBox="0 0 24 24" aria-hidden="true">${t[3]}</svg><span class="long">${t[1]}</span><span class="short">${t[2]}</span>${t[0]==='contact'&&alertN?`<span class="badge" aria-label="ต้องสั่งเพิ่ม ${alertN} รายการ">${alertN}</span>`:''}</a>`).join('')+`<a href="receipt.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6z"/><path d="M9 10h6M9 14h6M9 18h3"/></svg><span class="long">ใบเบิก / ใบรับเงิน</span><span class="short">ใบเบิก</span></a>`;
   const a=document.activeElement,fid=a&&a.id&&$('#main').contains(a)?a.id:null,sel=fid&&a.selectionStart!=null&&a.type!=='number'?a.selectionStart:null;
   $('#main').innerHTML={calendar:viewCalendar,sales:viewSales,contact:viewContact,ledger:viewLedger,summary:viewSummary,products:viewProducts}[tab]();
   if(tab==='summary')drawChart();
