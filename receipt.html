@@ -140,7 +140,7 @@ dialog .in{padding:16px;display:flex;flex-direction:column;gap:12px}
 
 #printRoot{display:none}
 /* เนื้อหาตอนพิมพ์: ปรับความกว้างและเลื่อนตำแหน่งได้จากหน้าตัวอย่างก่อนพิมพ์ (จำค่าไว้ในเครื่องนี้) */
-.pr .sheet{width:var(--pw,126mm);max-width:100%;height:auto;min-height:0;padding:0;margin:0;overflow:visible;box-shadow:none;gap:2.4mm;break-inside:avoid;page-break-inside:avoid;transform:translate(var(--px,0mm),var(--py,0mm))}
+.pr .sheet{width:var(--pw,126mm);max-width:100%;height:auto;min-height:0;padding:0;margin:0;overflow:visible;box-shadow:none;gap:2.4mm;break-inside:avoid;page-break-inside:avoid;transform:translate(var(--px,0mm),var(--py,0mm)) scale(var(--ps,1));transform-origin:top left}
 .pr .s-head{grid-template-columns:27mm minmax(0,1fr) 37mm}
 .pr .s-head img{width:27mm}
 .pr .s-sign{margin-top:7mm}
@@ -342,7 +342,6 @@ function docHtml(d){
    ${rxTable(d.prescription)}
    ${d.note?`<div class="s-note">หมายเหตุ: ${esc(d.note)}</div>`:''}
    <div class="s-sign"><div><div class="line"></div>ผู้รับเงิน${d.receiver_name?`<br>( ${esc(d.receiver_name)} )`:''}</div></div>
-   ${d.revision>1?`<div class="s-rev">ฉบับแก้ไขครั้งที่ ${d.revision-1}</div>`:''}
   </div>`;
 }
 function fitPreview(host){
@@ -582,15 +581,15 @@ function pickSale(id){
 }
 
 /* ----- พิมพ์ ----- */
-const PR_DEFAULT={x:-3,y:-2,w:126};
+const PR_DEFAULT={x:-3,y:-2,w:126,s:100};
 function prGet(){try{return {...PR_DEFAULT,...JSON.parse(localStorage.getItem('rb-print')||'{}')}}catch(_){return {...PR_DEFAULT}}}
-function prApply(){const p=prGet();document.querySelectorAll('.pr').forEach(el=>{el.style.setProperty('--px',p.x+'mm');el.style.setProperty('--py',p.y+'mm');el.style.setProperty('--pw',p.w+'mm')})}
+function prApply(){const p=prGet();document.querySelectorAll('.pr').forEach(el=>{el.style.setProperty('--px',p.x+'mm');el.style.setProperty('--py',p.y+'mm');el.style.setProperty('--pw',p.w+'mm');el.style.setProperty('--ps',Math.min(150,Math.max(50,p.s))/100)})}
 function prSet(k,v){const p=prGet();p[k]=v;try{localStorage.setItem('rb-print',JSON.stringify(p))}catch(_){}prApply()}
 function openPreview(d){
   const pv=$('#pv'),p=prGet();
   const inp=(k,l,min,max)=>`<label><span class="dim">${l}</span><input id="pr_${k}" type="number" step="1" min="${min}" max="${max}" inputmode="numeric" value="${p[k]}"></label>`;
   pv.innerHTML=`<div class="bar"><div><b>ตัวอย่างก่อนพิมพ์ · A5 (148 × 210 มม.)</b><div class="dim">ในหน้าต่างพิมพ์ เลือกกระดาษ A5 แนวตั้ง ขนาด 100%</div></div><div class="tools"><button type="button" class="btn" data-act="pv-close">ปิด</button><button type="button" class="btn primary" data-act="do-print">สั่งพิมพ์</button></div>
-   <div class="pv-adj" style="width:100%">${inp('x','เลื่อนซ้าย(−)/ขวา(+) มม.',-20,20)}${inp('y','เลื่อนขึ้น(−)/ลง(+) มม.',-20,30)}${inp('w','ความกว้างเนื้อหา มม.',90,136)}<button type="button" class="btn sm" data-act="pr-reset">ค่าเริ่มต้น</button><span class="dim">ถ้าพิมพ์แล้วแหว่งขวา ให้ลดความกว้างหรือเลื่อนซ้าย ระบบจำค่าไว้ในเครื่องนี้</span></div></div>
+   <div class="pv-adj" style="width:100%">${inp('x','เลื่อนซ้าย(−)/ขวา(+) มม.',-20,20)}${inp('y','เลื่อนขึ้น(−)/ลง(+) มม.',-20,30)}${inp('s','ขนาดบิล %',50,150)}${inp('w','ความกว้างเนื้อหา มม.',90,136)}<button type="button" class="btn sm" data-act="pr-reset">ค่าเริ่มต้น</button><span class="dim">ถ้าแหว่งขวา ให้ลดขนาดบิลหรือเลื่อนซ้าย ระบบจำค่าไว้ในเครื่องนี้</span></div></div>
    <div class="stage"><div class="pv-scale"><div class="pv-page pr">${docHtml(d)}</div></div></div>`;
   $('#printRoot').innerHTML=docHtml(d);prApply();
   if(!pv.open)pv.showModal();
@@ -615,7 +614,7 @@ document.addEventListener('click',ev=>{
   if(a==='preview-doc')openPreview(openDoc);
   if(a==='pv-close')$('#pv').close();
   if(a==='do-print')doPrint();
-  if(a==='pr-reset'){try{localStorage.removeItem('rb-print')}catch(_){}const p=prGet();['x','y','w'].forEach(k=>{const i=$('#pr_'+k);if(i)i.value=p[k]});prApply()}
+  if(a==='pr-reset'){try{localStorage.removeItem('rb-print')}catch(_){}const p=prGet();['x','y','w','s'].forEach(k=>{const i=$('#pr_'+k);if(i)i.value=p[k]});prApply()}
   if(a==='edit-doc'){F=fromSaved(openDoc);setView('edit',false);history.pushState(null,'','#edit='+openDoc.id)}
   if(a==='copy-doc'){const f=fromSaved(openDoc);Object.assign(f,{id:null,doc_no:'',revision:null,doc_date:today(),status:'issued',source_sale_id:''});F=f;setView('new');toast('คัดลอกข้อมูลมาแล้ว จะได้เลขที่ใหม่เมื่อบันทึก')}
   if(a==='cancel-edit'){F=null;history.back()}
@@ -635,7 +634,7 @@ document.addEventListener('input',ev=>{
   const t=ev.target,id=t.id||'';
   if(id==='pinInput'){t.value=t.value.replace(/\D/g,'');if(t.value.length===4)checkPin();return}
   if(id==='saleQ')return drawSales();
-  if(/^pr_[xyw]$/.test(id)){const v=parseFloat(t.value);if(Number.isFinite(v))prSet(id.slice(3),v);return}
+  if(/^pr_[xyws]$/.test(id)){const v=parseFloat(t.value);if(Number.isFinite(v))prSet(id.slice(3),v);return}
   if(!F||!(view==='new'||view==='edit'))return;
   let m;
   if((m=id.match(/^f_(book_no|doc_date|status|discount|receiver_name|note)$/)))F[m[1]]=t.value;
