@@ -673,10 +673,10 @@ function openSale(s,date,contactMode){
    <fieldset><legend>ข้อมูลการขาย</legend><div class="grid">
     <label>วันที่ขาย<input id="f_date" type="date" required value="${esc(F.date)}"></label>
     <label>เลขที่ใบเสร็จ / ออเดอร์<input id="f_receipt" required value="${esc(F.receipt)}"></label>
-    <label>ชื่อลูกค้า<input id="f_customer" list="dlCust" value="${esc(F.customer)}"></label>
+    <label>ชื่อลูกค้า<input id="f_customer" autocomplete="off" value="${esc(F.customer)}"></label>
     <label>เบอร์โทรลูกค้า<input id="f_phone" type="tel" inputmode="tel" autocomplete="off" value="${esc(F.phone)}"></label>
     <label>พนักงานขาย<input id="f_seller" list="dlSeller" value="${esc(F.seller)}"></label>
-    <datalist id="dlCust">${names('customer')}</datalist><datalist id="dlSeller">${names('seller')}</datalist></div></fieldset>
+    <datalist id="dlSeller">${names('seller')}</datalist></div></fieldset>
    <fieldset id="fsFrame"></fieldset><fieldset id="fsLens"></fieldset><fieldset id="fsContact"></fieldset><fieldset id="fsSpecial"></fieldset>
    <fieldset><legend>ค่าใช้จ่ายเพิ่มเติม</legend><div class="grid">
     ${[['accessory','ค่าอุปกรณ์'],['labor','ค่าทำงาน / ค่าแรง'],['discount','ส่วนลด'],['other','ค่าบริการรูดบัตร']].map(([k,l])=>`<label>${l}<input id="f_${k}" type="number" min="0" step="any" inputmode="decimal" value="${esc(F[k])}" placeholder="0"></label>`).join('')}</div>
