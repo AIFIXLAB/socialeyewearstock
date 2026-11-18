@@ -131,21 +131,87 @@ function restoreSql(b){
   return L.join('\n\n');
 }
 
+/* ---------- ซิปฉุกเฉิน (เขียนซิปเอง ไม่ต้องพึ่งไลบรารี) ---------- */
+const CRC=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(u){let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=CRC[(c^u[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+function makeZip(files){
+  const enc=new TextEncoder(),parts=[],cd=[];let off=0;const d=new Date();
+  const dt=((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate(),tm=(d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1);
+  for(const f of files){
+    const name=enc.encode(f.path),data=typeof f.data==='string'?enc.encode(f.data):new Uint8Array(f.data),crc=crc32(data);
+    const h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(8,0,true);h.setUint16(10,tm,true);h.setUint16(12,dt,true);
+    h.setUint32(14,crc,true);h.setUint32(18,data.length,true);h.setUint32(22,data.length,true);h.setUint16(26,name.length,true);h.setUint16(28,0,true);
+    parts.push(new Uint8Array(h.buffer),name,data);
+    const c=new DataView(new ArrayBuffer(46));
+    c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint16(10,0,true);c.setUint16(12,tm,true);c.setUint16(14,dt,true);
+    c.setUint32(16,crc,true);c.setUint32(20,data.length,true);c.setUint32(24,data.length,true);c.setUint16(28,name.length,true);c.setUint32(42,off,true);
+    cd.push(new Uint8Array(c.buffer),name);off+=30+name.length+data.length;
+  }
+  const cdSize=cd.reduce((a,x)=>a+x.length,0),e=new DataView(new ArrayBuffer(22));
+  e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cdSize,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...cd,new Uint8Array(e.buffer)],{type:'application/zip'});
+}
+function toCsv(rows){
+  if(!rows.length)return '\ufeffไม่มีรายการ\r\n';
+  const keys=[...new Set(rows.flatMap(r=>Object.keys(r)))];
+  const cell=v=>{if(v==null)return '';let t=typeof v==='object'?JSON.stringify(v):String(v);if(/^[=+\-@]/.test(t)&&!/^[+-]?\d/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"'};
+  return '\ufeff'+[keys.map(cell).join(',')].concat(rows.map(r=>keys.map(k=>cell(r[k])).join(','))).join('\r\n');
+}
+const SITE_FILES=['index.html','receipt.html','voucher.html','backup.html','config.js','logo.png','vercel.json'];
+const SETUP_FILES=[['00_อ่านก่อน_README.md','setup/START_HERE.md'],['02_database_sql/01_schema_pin.sql','setup/01_schema_pin.sql'],['02_database_sql/02_reimbursement.sql','setup/02_reimbursement.sql'],['02_database_sql/03_voucher.sql','setup/03_voucher.sql'],['02_database_sql/README_ลำดับการรัน.md','setup/SQL_ORDER.md'],
+  ['03_docs/01_คู่มือระบบ_SYSTEM_SPEC.md','setup/docs/SYSTEM_SPEC.md'],['03_docs/02_ขั้นตอนย้ายไปเจ้าใหม่.md','setup/docs/RESTORE_GUIDE.md'],['03_docs/03_ประวัติการพัฒนา_CHANGELOG.md','setup/docs/CHANGELOG.md'],
+  ['03_docs/original_requirements/01_ความต้องการเริ่มต้น_บัญชีร้าน.txt','setup/docs/original_requirements/01_initial.txt'],['03_docs/original_requirements/02_สเปก_ใบเบิกใบรับเงิน.txt','setup/docs/original_requirements/02_receipt_spec.txt'],['03_docs/original_requirements/03_สเปก_คูปองเลนส์.txt','setup/docs/original_requirements/03_voucher_spec.txt'],
+  ['05_ai_rebuild/AI_REBUILD_PROMPT.md','setup/AI_REBUILD_PROMPT.md']];
+async function grab(url){try{const r=await fetch(url,{cache:'no-store'});if(!r.ok)return null;return new Uint8Array(await r.arrayBuffer())}catch(_){return null}}
+async function buildZip(b,log){
+  const day=stamp().slice(0,10),root=`SocialEyewear_Stock_Backup_${day}/`,files=[],missing=[];
+  log('ไฟล์เว็บ');
+  for(const f of SITE_FILES){const d=await grab(f);if(d)files.push({path:root+'01_website/'+f,data:d});else missing.push('01_website/'+f)}
+  log('SQL และคู่มือ');
+  for(const[to,from]of SETUP_FILES){const d=await grab(from);if(d)files.push({path:root+to,data:d});else missing.push(to)}
+  log('ข้อมูลร้าน');
+  const D=root+'04_data_backup/',T=D+'แยกตามตาราง/',s=stamp();
+  files.push({path:D+`social-eyewear-data_${s}.json`,data:JSON.stringify(b)});
+  files.push({path:D+`social-eyewear-restore_${s}.sql`,data:restoreSql(b)});
+  if(window.XLSX){const wb=XLSX.utils.book_new();Object.entries(sheets(b)).forEach(([n,rows])=>XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows.length?rows:[{ข้อมูล:'ไม่มีรายการ'}]),n.slice(0,31)));files.push({path:D+`social-eyewear-tables_${s}.xlsx`,data:XLSX.write(wb,{bookType:'xlsx',type:'array'})})}
+  else missing.push('04_data_backup/ไฟล์ Excel (ใช้ไฟล์ csv ในโฟลเดอร์แยกตามตารางแทนได้)');
+  const tables={},a=b.modules.app_docs||[];
+  ['products','sales','ledger','events'].forEach(c=>tables['app_docs_'+c]=a.filter(r=>r.col===c).map(r=>({id:r.id,...r.data})));
+  const rb=b.modules.reimbursement;if(rb){tables.reimbursement_documents=rb.documents.map(d=>{const x={...d};delete x.customer;delete x.items;delete x.prescription;return x});
+    tables.reimbursement_customers=rb.documents.filter(d=>d.customer).map(d=>({document_id:d.id,...d.customer}));tables.reimbursement_items=rb.documents.flatMap(d=>(d.items||[]).map(i=>({document_id:d.id,...i})));
+    tables.reimbursement_prescriptions=rb.documents.filter(d=>d.prescription).map(d=>({document_id:d.id,...d.prescription}));tables.document_revision_logs=rb.logs.map(l=>{const x={...l};delete x.snapshot;return x});tables.document_settings=rb.settings?[rb.settings]:[]}
+  const vc=b.modules.voucher;if(vc){tables.voucher_companies=vc.companies;tables.voucher_purchases=vc.purchases.map(p=>{const x={...p};x.attachment=x.attachment?'(มีรูป ดูในไฟล์ .json)':'';return x});tables.voucher_usages=vc.usages;tables.voucher_refunds=vc.refunds;tables.voucher_logs=vc.logs}
+  Object.entries(tables).forEach(([n,rows])=>{files.push({path:T+n+'.csv',data:toCsv(rows)});files.push({path:T+n+'.json',data:JSON.stringify(rows,null,1)})});
+  const sum=['สรุปชุดสำรอง Social Eyewear Stock','สร้างเมื่อ: '+new Date().toLocaleString('th-TH'),'ฐานข้อมูล: '+(b.source||''),'',...counts(b).map(([k,v])=>`${k}: ${typeof v==='number'?v.toLocaleString()+' รายการ':v}`),'','ไฟล์ในโฟลเดอร์แยกตามตาราง:',...Object.entries(tables).map(([n,r])=>`  ${n}: ${r.length} แถว`),'',missing.length?'ไฟล์ที่ดึงไม่ได้ (ใช้จากชุดสำรองฉบับก่อนแทน):\n'+missing.map(m=>'  - '+m).join('\n'):'ไฟล์ครบทุกไฟล์'];
+  files.push({path:D+'สรุป.txt',data:sum.join('\r\n')});
+  return {blob:makeZip(files),name:`SocialEyewear_Stock_Backup_${s}.zip`,count:files.length,missing};
+}
+async function runZip(){
+  const btn=$('#goZip'),st=$('#status');btn.disabled=true;
+  try{const b=await collect(t=>st.innerHTML=`<div class="notice">กำลังดึง: ${esc(t)}</div>`);
+    const z=await buildZip(b,t=>st.innerHTML=`<div class="notice">กำลังรวมไฟล์: ${esc(t)}</div>`);download(z.name,z.blob);
+    st.innerHTML=`<div class="notice ok">ดาวน์โหลด <b>${esc(z.name)}</b> แล้ว (${z.count} ไฟล์)${z.missing.length?`<br>ดึงไม่ได้ ${z.missing.length} ไฟล์: ${z.missing.map(esc).join(', ')}`:''}</div>${summary(b)}`}
+  catch(e){if(e.code==='bad_pin'){savePin('');return showPin('กรุณาใส่รหัสอีกครั้ง')}st.innerHTML=`<div class="notice err">${esc(e.message)}</div>`}
+  btn.disabled=false;
+}
+
 /* ---------- หน้าจอ ---------- */
 let LAST=null;
 function view(){
   $('#main').innerHTML=`<a class="back" href="index.html">‹ โปรแกรมหลัก</a>
   <section class="panel"><h1>สำรองข้อมูลทั้งหมด</h1>
    <p class="dim" style="margin:0">ดึงข้อมูลทุกระบบในร้านออกมาเก็บไว้ในคอมหรือแฟลชไดรฟ์ ได้แก่ การขาย สินค้า คอนแทคเลนส์ รายรับ-รายจ่าย ปฏิทิน ใบเบิก และคูปองเลนส์ การดึงข้อมูลนี้อ่านอย่างเดียว ไม่แก้หรือลบข้อมูลในระบบ</p>
-   <div class="tools"><button class="btn primary" id="go">ดาวน์โหลดข้อมูลสำรองทั้งหมด</button></div>
+   <div class="tools"><button class="btn primary" id="goZip">ดาวน์โหลดชุดสำรองฉุกเฉิน (ซิปเดียว)</button><button class="btn" id="go">ดาวน์โหลดเฉพาะข้อมูล (3 ไฟล์)</button></div>
+   <p class="dim" style="margin:0">ชุดสำรองฉุกเฉินรวมทุกอย่างในซิปเดียว: ไฟล์เว็บที่ใช้งานจริง SQL สร้างฐานข้อมูล คู่มือ ข้อความสั่ง AI และข้อมูลร้านล่าสุดแยกตามตาราง เก็บซิปนี้ไว้ในคอมและแฟลชไดรฟ์ได้เลย</p>
    <div id="status"></div></section>
   <section class="panel"><h2>ได้ไฟล์อะไรบ้าง</h2><ol>
    <li><b>social-eyewear-data_วันที่.json</b> ข้อมูลครบทุกระบบ ใช้กู้ระบบคืน (เปิดอ่านด้วยตาไม่สะดวก)</li>
-   <li><b>social-eyewear-ตาราง_วันที่.xlsx</b> ตาราง Excel อ่านง่าย แยกแผ่นตามระบบ ใช้ดูข้อมูลได้แม้ระบบล่ม</li>
+   <li><b>social-eyewear-tables_วันที่.xlsx</b> ตาราง Excel อ่านง่าย แยกแผ่นตามระบบ ใช้ดูข้อมูลได้แม้ระบบล่ม</li>
    <li><b>social-eyewear-restore_วันที่.sql</b> คำสั่งกู้ข้อมูลเข้าฐานข้อมูลใหม่ (ใช้ตอนย้ายไปผู้ให้บริการใหม่)</li></ol>
    <p class="dim" style="margin:0">นำทั้ง 3 ไฟล์ไปเก็บในโฟลเดอร์ <b>04_data_backup</b> ของชุดสำรอง แนะนำให้ทำอย่างน้อยเดือนละครั้ง และทุกครั้งก่อนแก้ระบบ</p></section>
   <section class="panel"><h2>สร้างไฟล์กู้ข้อมูลจากไฟล์สำรองเก่า</h2><p class="dim" style="margin:0">ถ้ามีไฟล์ .json อยู่แล้ว เลือกไฟล์ด้านล่างเพื่อสร้างไฟล์ .sql และ Excel ใหม่ได้ ไม่ต้องเชื่อมต่อระบบ</p><input type="file" id="file" accept=".json,application/json"><div id="fstatus"></div></section>`;
-  $('#go').onclick=run;$('#file').onchange=fromFile;
+  $('#go').onclick=run;$('#goZip').onclick=runZip;$('#file').onchange=fromFile;
 }
 function summary(b){return `<table>${counts(b).map(([k,v])=>`<tr><td>${k}</td><td>${typeof v==='number'?v.toLocaleString()+' รายการ':v}</td></tr>`).join('')}</table>`}
 async function makeFiles(b){
@@ -155,7 +221,7 @@ async function makeFiles(b){
   download(`social-eyewear-restore_${s}.sql`,restoreSql(b),'application/sql');
   await new Promise(r=>setTimeout(r,400));
   if(window.XLSX){const wb=XLSX.utils.book_new();Object.entries(sheets(b)).forEach(([n,rows])=>XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows.length?rows:[{ข้อมูล:'ไม่มีรายการ'}]),n.slice(0,31)));
-    download(`social-eyewear-ตาราง_${s}.xlsx`,new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));return true}
+    download(`social-eyewear-tables_${s}.xlsx`,new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));return true}
   return false;
 }
 async function run(){
