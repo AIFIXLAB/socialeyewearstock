@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>สำรองข้อมูล · Social Eyewear</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600&family=Bai+Jamjuree:wght@500;600;700&display=swap">
+<style>
+:root{--bg:#f1f4f4;--panel:#fff;--panel2:#e8eeee;--fg:#16242a;--muted:#5a6b72;--line:#d3dcdd;--accent:#0b6f62;--accent-fg:#fff;--accent-soft:#d8efea;--loss:#b3322c;--loss-soft:#f9e3e1;--cost-soft:#f8ecd3;
+  --display:"Bai Jamjuree","Anuphan",system-ui,sans-serif;--body:"Anuphan","Noto Sans Thai",system-ui,sans-serif;padding-top:env(safe-area-inset-top,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1719;--panel:#172225;--panel2:#20302f;--fg:#e6eeee;--muted:#9bafb3;--line:#2d3f42;--accent:#4fcbb6;--accent-fg:#06211d;--accent-soft:#163a35;--loss:#f2918b;--loss-soft:#44201e;--cost-soft:#3b2d12;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1719;--panel:#172225;--panel2:#20302f;--fg:#e6eeee;--muted:#9bafb3;--line:#2d3f42;--accent:#4fcbb6;--accent-fg:#06211d;--accent-soft:#163a35;--loss:#f2918b;--loss-soft:#44201e;--cost-soft:#3b2d12;color-scheme:dark}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.55 var(--body)}
+h1,h2{font-family:var(--display);margin:0;line-height:1.25}h1{font-size:1.4rem}h2{font-size:1.05rem}
+main{max-width:860px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:14px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:7px;padding:9px 14px;cursor:pointer;font:inherit;font-weight:500;min-height:42px;color:var(--fg);text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+.btn:disabled{opacity:.55}
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.back{color:var(--accent);text-decoration:none;font-weight:600;font-size:.9rem}
+.dim{color:var(--muted);font-size:.88rem}
+.notice{background:var(--cost-soft);border-radius:8px;padding:10px 12px;font-size:.9rem}
+.ok{background:var(--accent-soft)}.err{background:var(--loss-soft)}
+ol{margin:0;padding-left:20px}
+input{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:8px;min-height:42px;width:100%}
+.pin{max-width:340px;width:100%;margin:12vh auto 0;text-align:center}
+.pin input{text-align:center;font-size:1.6rem;letter-spacing:.5em}
+table{border-collapse:collapse;width:100%}td{padding:4px 6px;border-bottom:1px solid var(--line)}td:last-child{text-align:right}
+</style>
+</head>
+<body>
+<main id="main"></main>
+<script src="config.js"></script>
+<script>
+'use strict';
+const $=s=>document.querySelector(s);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+const stamp=()=>{const d=new Date();return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`};
+const CFG=window.SE_CONFIG||{},PIN_KEY='social-eyewear-pin';let PIN='';
+function readPin(){try{return sessionStorage.getItem(PIN_KEY)||''}catch(_){return ''}}
+function savePin(v){try{v?sessionStorage.setItem(PIN_KEY,v):sessionStorage.removeItem(PIN_KEY)}catch(_){}}
+async function rpc(fn,args){
+  let res;try{res=await fetch(CFG.supabaseUrl.replace(/\/$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',headers:{apikey:CFG.supabaseAnonKey,'Content-Type':'application/json'},body:JSON.stringify(args)})}
+  catch(e){throw Object.assign(new Error('เชื่อมต่อไม่ได้ ตรวจอินเทอร์เน็ต'),{code:'net'})}
+  if(res.status===404)throw Object.assign(new Error('missing'),{code:'missing'});
+  if(!res.ok)throw new Error('เซิร์ฟเวอร์ตอบกลับผิดพลาด ('+res.status+')');
+  const j=await res.json();if(!j.ok)throw Object.assign(new Error(j.message||j.error),{code:j.error});return j;
+}
+function download(name,data,type){const u=URL.createObjectURL(data instanceof Blob?data:new Blob([data],{type}));const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),3000)}
+
+/* ---------- ดึงข้อมูลทั้งหมด (อ่านอย่างเดียว) ---------- */
+async function collect(log){
+  const out={format:'social-eyewear-full-backup',version:1,exported_at:new Date().toISOString(),source:CFG.supabaseUrl,modules:{}};
+  log('ข้อมูลขาย สินค้า คอนแทคเลนส์ รายรับ-รายจ่าย ปฏิทิน');
+  const rows=[];for(let from=0;;from+=1000){const j=await rpc('app_list',{p_pin:PIN,p_from:from,p_limit:1000});rows.push(...j.rows);if(j.rows.length<1000)break}
+  out.modules.app_docs=rows;
+  log('ใบเบิก / ใบรับเงิน');
+  try{const j=await rpc('rb_export',{p_pin:PIN});out.modules.reimbursement={settings:j.settings,documents:j.documents,logs:j.logs}}
+  catch(e){if(e.code!=='missing')throw e;out.modules.reimbursement=null}
+  log('คูปองเลนส์');
+  try{const j=await rpc('vc_export',{p_pin:PIN});out.modules.voucher={companies:j.companies,purchases:j.purchases,usages:j.usages,refunds:j.refunds,logs:j.logs}}
+  catch(e){if(e.code!=='missing')throw e;out.modules.voucher=null}
+  return out;
+}
+function counts(b){
+  const a=b.modules.app_docs||[],n=c=>a.filter(r=>r.col===c).length,rb=b.modules.reimbursement,vc=b.modules.voucher;
+  return [['สินค้า (รวมคอนแทคเลนส์)',n('products')],['รายการขาย',n('sales')],['รายรับ-รายจ่าย',n('ledger')],['ปฏิทิน',n('events')],
+    ['ใบเบิก / ใบรับเงิน',rb?rb.documents.length:'ยังไม่ได้ติดตั้ง'],['ประวัติแก้ไขใบเบิก',rb?rb.logs.length:'–'],
+    ['บริษัทเลนส์',vc?vc.companies.length:'ยังไม่ได้ติดตั้ง'],['ซื้อคูปอง',vc?vc.purchases.length:'–'],['ตัดคูปอง',vc?vc.usages.length:'–'],['คืนยอดคูปอง',vc?vc.refunds.length:'–']];
+}
+
+/* ---------- ตาราง Excel อ่านง่าย ---------- */
+function sheets(b){
+  const a=b.modules.app_docs||[],d=c=>a.filter(r=>r.col===c).map(r=>({id:r.id,...r.data}));
+  const S={};
+  S['สินค้า']=d('products').filter(p=>p.kind!=='contact').map(p=>({ประเภท:p.kind==='lens'?'เลนส์':'กรอบ',ยี่ห้อ:p.brand,รุ่น:p.model,Coating:p.coating||'',Index:p.index||'',สี:p.color||'',ทุน:p.cost,ขาย:p.price}));
+  S['คอนแทคเลนส์']=d('products').filter(p=>p.kind==='contact').map(p=>({ยี่ห้อ:p.brand,รุ่น:p.model,ชนิด:p.type||'',ค่าสายตา:p.power,ทุน:p.cost,ขาย:p.price,รับเข้ารวม:(p.stockIn||[]).reduce((s,x)=>s+(+x.qty||0),0),เตือนเมื่อเหลือ:p.minStock??1}));
+  S['การขาย']=d('sales').sort((x,y)=>(x.date||'').localeCompare(y.date||'')).map(s=>({วันที่:s.date,ใบเสร็จ:s.receipt,ลูกค้า:s.customer||'',เบอร์โทร:s.phone||'',พนักงาน:s.seller||'',
+    กรอบ:s.frame?[s.frame.brand,s.frame.model,s.frame.color].filter(Boolean).join(' '):'',ทุนกรอบ:s.frame?.cost??'',ขายกรอบ:s.frame?.price??'',
+    เลนส์:s.lens?[s.lens.brand,s.lens.model,s.lens.coating,s.lens.index].filter(Boolean).join(' '):'',ทุนเลนส์:s.lens?.cost??'',ขายเลนส์:s.lens?.price??'',
+    คอนแทคเลนส์:(s.contact||[]).map(r=>`${r.brand} ${r.model} ${r.power} x${r.qty}`).join(' / '),
+    คอนแทคสั่งพิเศษ:(s.special||[]).map(r=>`${r.eye} ${r.brand} ${r.model} SPH${r.sph} CYL${r.cyl||''} AX${r.axis||''} ADD${r.add||''} x${r.qty}`).join(' / '),
+    ค่าอุปกรณ์:s.accessory||0,ค่าแรง:s.labor||0,ส่วนลด:s.discount||0,ค่ารูดบัตร:s.other||0,หมายเหตุ:s.note||''}));
+  S['รายรับรายจ่าย']=d('ledger').map(e=>({วันที่:e.date,ประเภท:e.type==='income'?'รายรับ':'รายจ่าย',หมวด:e.category,รายละเอียด:e.title||'',จำนวนเงิน:e.amount}));
+  S['ปฏิทิน']=d('events').map(e=>({วันที่:e.date,เวลา:e.time||'',ประเภท:e.kind||'',หัวข้อ:e.title,หมายเหตุ:e.note||''}));
+  const rb=b.modules.reimbursement;
+  if(rb)S['ใบเบิก']=rb.documents.map(x=>{const c=x.customer||{},p=x.prescription||{};return {เลขที่:x.doc_no,เล่มที่:x.book_no||'',วันที่:x.doc_date,สถานะ:x.status,ประเภท:x.claim_type==='frame_lens'?'กรอบพร้อมเลนส์':'เลนส์อย่างเดียว',
+    ลูกค้า:c.party_type==='company'?c.company_name:[c.title,c.first_name,c.last_name].filter(Boolean).join(' '),ที่อยู่:c.address||'',โทร:c.phone||'',เลขผู้เสียภาษี:c.tax_id||'',
+    รายการ:(x.items||[]).map(i=>[i.kind==='frame'?'กรอบ':'เลนส์',i.brand,i.model,i.lens_index,i.coating,i.amount].filter(Boolean).join(' ')).join(' / '),
+    ส่วนลด:x.discount,ยอดสุทธิ:x.total,R:[p.r_sph,p.r_cyl,p.r_axis,p.r_add].filter(Boolean).join(' '),L:[p.l_sph,p.l_cyl,p.l_axis,p.l_add].filter(Boolean).join(' '),PD:p.pd_total||[p.r_pd,p.l_pd].filter(Boolean).join('/'),ผู้บันทึก:x.created_by||''}});
+  const vc=b.modules.voucher;
+  if(vc){const cn=id=>(vc.companies.find(c=>c.id===id)||{}).name||'';
+    S['คูปอง_ซื้อ']=vc.purchases.map(x=>({วันที่:x.purchase_date,บริษัท:cn(x.company_id),เลขที่เอกสาร:x.doc_no||'',จำนวนเงิน:x.amount,หมายเหตุ:x.note||'',สถานะ:x.status,เหตุผลยกเลิก:x.cancel_reason||''}));
+    S['คูปอง_ตัด']=vc.usages.map(x=>({วันที่:x.use_date,บริษัท:cn(x.company_id),เลขบิล:x.bill_no||'',OD:[x.r_sph,x.r_cyl,x.r_ax].filter(Boolean).join(' '),OS:[x.l_sph,x.l_cyl,x.l_ax].filter(Boolean).join(' '),ชนิด:x.lens_type||'',Index:x.lens_index||'',รุ่น:x.lens_model||'',คู่:x.pairs,มูลค่า:x.amount,หมายเหตุ:x.note||'',สถานะ:x.status}));
+    S['คูปอง_คืนยอด']=vc.refunds.map(x=>({วันที่:x.refund_date,จำนวนเงิน:x.amount,เหตุผล:x.reason,รายการตัด:x.usage_id}));}
+  return S;
+}
+
+/* ---------- สร้าง SQL กู้ข้อมูลเข้าฐานใหม่ ---------- */
+function restoreSql(b){
+  const tag='$SE'+Math.random().toString(36).slice(2,8)+'$';
+  const J=v=>tag+JSON.stringify(v??[])+tag+'::jsonb';
+  const L=['-- กู้ข้อมูล Social Eyewear จากไฟล์สำรอง '+b.exported_at,'-- ต้องรัน schema.sql, 02_reimbursement.sql, 03_voucher.sql ในฐานข้อมูลใหม่ก่อน แล้วค่อยรันไฟล์นี้ รันซ้ำได้ ไม่สร้างข้อมูลซ้ำ','begin;'];
+  const a=(b.modules.app_docs||[]).map(r=>({col:r.col,id:r.id,data:r.data}));
+  L.push(`insert into public.app_docs (col, id, data) select x.col, x.id, x.data from jsonb_to_recordset(${J(a)}) as x(col text, id text, data jsonb) on conflict (col, id) do nothing;`);
+  const rb=b.modules.reimbursement;
+  if(rb){
+    if(rb.settings)L.push(`insert into public.document_settings (id, shop, numbering, counters) select 1, x.shop, x.numbering, x.counters from jsonb_to_record(${tag+JSON.stringify(rb.settings)+tag}::jsonb) as x(shop jsonb, numbering jsonb, counters jsonb) on conflict (id) do update set shop = excluded.shop, numbering = excluded.numbering, counters = excluded.counters;`);
+    L.push(`insert into public.reimbursement_documents select * from jsonb_populate_recordset(null::public.reimbursement_documents, ${J(rb.documents.map(d=>{const x={...d};delete x.customer;delete x.items;delete x.prescription;return x}))}) on conflict do nothing;`);
+    L.push(`insert into public.reimbursement_customers select * from jsonb_populate_recordset(null::public.reimbursement_customers, ${J(rb.documents.filter(d=>d.customer).map(d=>({...d.customer,document_id:d.id})))}) on conflict do nothing;`);
+    L.push(`insert into public.reimbursement_items (document_id, kind, sort, brand, model, color, product_code, lens_index, coating, lens_type, amount) select x.document_id, x.kind, x.sort, x.brand, x.model, x.color, x.product_code, x.lens_index, x.coating, x.lens_type, x.amount from jsonb_populate_recordset(null::public.reimbursement_items, ${J(rb.documents.flatMap(d=>(d.items||[]).map((it,i)=>({...it,document_id:d.id,sort:i+1}))))}) x where not exists (select 1 from public.reimbursement_items i where i.document_id = x.document_id);`);
+    L.push(`insert into public.reimbursement_prescriptions select * from jsonb_populate_recordset(null::public.reimbursement_prescriptions, ${J(rb.documents.filter(d=>d.prescription).map(d=>({...d.prescription,document_id:d.id})))}) on conflict do nothing;`);
+    L.push(`insert into public.document_revision_logs (document_id, revision, action, editor, changes, snapshot, created_at) select x.document_id, x.revision, x.action, x.editor, x.changes, x.snapshot, x.created_at from jsonb_populate_recordset(null::public.document_revision_logs, ${J(rb.logs)}) x where not exists (select 1 from public.document_revision_logs l where l.document_id = x.document_id and l.revision = x.revision and l.action = x.action);`);
+  }
+  const vc=b.modules.voucher;
+  if(vc){
+    const ids=vc.companies.map(c=>"'"+String(c.id).replace(/'/g,'')+"'").join(',')||"'00000000-0000-0000-0000-000000000000'";
+    L.push(`delete from public.voucher_companies c where c.id not in (${ids}) and not exists (select 1 from public.voucher_purchases p where p.company_id = c.id) and not exists (select 1 from public.voucher_usages u where u.company_id = c.id);`);
+    L.push(`insert into public.voucher_companies select * from jsonb_populate_recordset(null::public.voucher_companies, ${J(vc.companies)}) on conflict do nothing;`);
+    L.push(`insert into public.voucher_purchases select * from jsonb_populate_recordset(null::public.voucher_purchases, ${J(vc.purchases)}) on conflict do nothing;`);
+    L.push(`insert into public.voucher_usages select * from jsonb_populate_recordset(null::public.voucher_usages, ${J(vc.usages)}) on conflict do nothing;`);
+    L.push(`insert into public.voucher_refunds select * from jsonb_populate_recordset(null::public.voucher_refunds, ${J(vc.refunds)}) on conflict do nothing;`);
+    L.push(`insert into public.voucher_logs (entity, entity_id, action, editor, before, after, note, created_at) select x.entity, x.entity_id, x.action, x.editor, x.before, x.after, x.note, x.created_at from jsonb_populate_recordset(null::public.voucher_logs, ${J(vc.logs)}) x where not exists (select 1 from public.voucher_logs l where l.entity_id = x.entity_id and l.action = x.action and l.created_at = x.created_at);`);
+  }
+  L.push('commit;','');
+  return L.join('\n\n');
+}
+
+/* ---------- หน้าจอ ---------- */
+let LAST=null;
+function view(){
+  $('#main').innerHTML=`<a class="back" href="index.html">‹ โปรแกรมหลัก</a>
+  <section class="panel"><h1>สำรองข้อมูลทั้งหมด</h1>
+   <p class="dim" style="margin:0">ดึงข้อมูลทุกระบบในร้านออกมาเก็บไว้ในคอมหรือแฟลชไดรฟ์ ได้แก่ การขาย สินค้า คอนแทคเลนส์ รายรับ-รายจ่าย ปฏิทิน ใบเบิก และคูปองเลนส์ การดึงข้อมูลนี้อ่านอย่างเดียว ไม่แก้หรือลบข้อมูลในระบบ</p>
+   <div class="tools"><button class="btn primary" id="go">ดาวน์โหลดข้อมูลสำรองทั้งหมด</button></div>
+   <div id="status"></div></section>
+  <section class="panel"><h2>ได้ไฟล์อะไรบ้าง</h2><ol>
+   <li><b>social-eyewear-data_วันที่.json</b> ข้อมูลครบทุกระบบ ใช้กู้ระบบคืน (เปิดอ่านด้วยตาไม่สะดวก)</li>
+   <li><b>social-eyewear-ตาราง_วันที่.xlsx</b> ตาราง Excel อ่านง่าย แยกแผ่นตามระบบ ใช้ดูข้อมูลได้แม้ระบบล่ม</li>
+   <li><b>social-eyewear-restore_วันที่.sql</b> คำสั่งกู้ข้อมูลเข้าฐานข้อมูลใหม่ (ใช้ตอนย้ายไปผู้ให้บริการใหม่)</li></ol>
+   <p class="dim" style="margin:0">นำทั้ง 3 ไฟล์ไปเก็บในโฟลเดอร์ <b>04_data_backup</b> ของชุดสำรอง แนะนำให้ทำอย่างน้อยเดือนละครั้ง และทุกครั้งก่อนแก้ระบบ</p></section>
+  <section class="panel"><h2>สร้างไฟล์กู้ข้อมูลจากไฟล์สำรองเก่า</h2><p class="dim" style="margin:0">ถ้ามีไฟล์ .json อยู่แล้ว เลือกไฟล์ด้านล่างเพื่อสร้างไฟล์ .sql และ Excel ใหม่ได้ ไม่ต้องเชื่อมต่อระบบ</p><input type="file" id="file" accept=".json,application/json"><div id="fstatus"></div></section>`;
+  $('#go').onclick=run;$('#file').onchange=fromFile;
+}
+function summary(b){return `<table>${counts(b).map(([k,v])=>`<tr><td>${k}</td><td>${typeof v==='number'?v.toLocaleString()+' รายการ':v}</td></tr>`).join('')}</table>`}
+async function makeFiles(b){
+  const s=stamp();
+  download(`social-eyewear-data_${s}.json`,JSON.stringify(b),'application/json');
+  await new Promise(r=>setTimeout(r,400));
+  download(`social-eyewear-restore_${s}.sql`,restoreSql(b),'application/sql');
+  await new Promise(r=>setTimeout(r,400));
+  if(window.XLSX){const wb=XLSX.utils.book_new();Object.entries(sheets(b)).forEach(([n,rows])=>XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows.length?rows:[{ข้อมูล:'ไม่มีรายการ'}]),n.slice(0,31)));
+    download(`social-eyewear-ตาราง_${s}.xlsx`,new Blob([XLSX.write(wb,{bookType:'xlsx',type:'array'})],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));return true}
+  return false;
+}
+async function run(){
+  const btn=$('#go'),st=$('#status');btn.disabled=true;
+  try{const b=await collect(t=>st.innerHTML=`<div class="notice">กำลังดึง: ${esc(t)}</div>`);LAST=b;const x=await makeFiles(b);
+    st.innerHTML=`<div class="notice ok">ดาวน์โหลดแล้ว ${x?'3':'2'} ไฟล์ ${x?'':'(ไฟล์ Excel สร้างไม่ได้ เพราะโหลดตัวช่วยไม่สำเร็จ ไฟล์ .json ยังครบ)'}</div>${summary(b)}`}
+  catch(e){if(e.code==='bad_pin'){savePin('');return showPin('กรุณาใส่รหัสอีกครั้ง')}st.innerHTML=`<div class="notice err">${esc(e.message)}</div>`}
+  btn.disabled=false;
+}
+async function fromFile(ev){
+  const f=ev.target.files[0],st=$('#fstatus');if(!f)return;
+  try{const b=JSON.parse(await f.text());if(b.format!=='social-eyewear-full-backup')throw new Error('ไฟล์นี้ไม่ใช่ไฟล์สำรองทั้งหมดของ Social Eyewear');const x=await makeFiles(b);st.innerHTML=`<div class="notice ok">สร้างไฟล์แล้ว ${x?'(.json .sql .xlsx)':'(.json .sql)'}</div>${summary(b)}`}
+  catch(e){st.innerHTML=`<div class="notice err">${esc(e.message||'อ่านไฟล์ไม่ได้')}</div>`}
+}
+function showPin(msg){
+  $('#main').innerHTML=`<form id="pinForm" class="panel pin" novalidate><h1>Social Eyewear</h1><p class="dim" style="margin:0">ใส่รหัส 4 หลักเพื่อสำรองข้อมูล</p><input id="pinInput" type="password" inputmode="numeric" maxlength="4" autocomplete="off" aria-label="รหัส 4 หลัก"><div id="pinErr" style="color:var(--loss)">${esc(msg||'')}</div><button class="btn primary">เข้าใช้งาน</button><a class="back" href="index.html">‹ กลับโปรแกรมหลัก</a></form>`;
+  const i=$('#pinInput');i.focus();
+  const go=async()=>{if(!i.value)return;try{await rpc('app_login',{p_pin:i.value});PIN=i.value;savePin(PIN);view()}catch(e){i.value='';$('#pinErr').textContent=e.code==='bad_pin'?'รหัสไม่ถูกต้อง':e.message}};
+  $('#pinForm').onsubmit=e=>{e.preventDefault();go()};i.oninput=()=>{i.value=i.value.replace(/\D/g,'');if(i.value.length===4)go()};
+}
+PIN=readPin();if(PIN)view();else showPin('');
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</body>
+</html>
