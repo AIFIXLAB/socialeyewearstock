@@ -182,7 +182,7 @@ let REPORT={year:new Date().getFullYear(),company:'',data:null,err:''};
 const comp=id=>COMP.find(c=>c.id===id);
 const activeComps=()=>COMP.filter(c=>c.active);
 async function loadOverview(){const j=await rpc('vc_overview',{p_pin:PIN});COMP=j.companies||[]}
-function blankU(keep){return {id:uuid(),is_new:true,company_id:keep?.company_id||(activeComps()[0]?.id||''),use_date:keep?.use_date||today(),bill_no:keep?.bill_no||'',r_sph:'',r_cyl:'',r_ax:'',l_sph:'',l_cyl:'',l_ax:'',lens_type:keep?.lens_type||'',lens_index:'',lens_model:'',pairs:'1',amount:'',note:'',revision:null}}
+function blankU(keep){return {id:uuid(),is_new:true,company_id:keep?.company_id||(activeComps()[0]?.id||''),use_date:keep?.use_date||today(),bill_no:keep?.bill_no||'',r_text:'',l_text:'',lens_type:keep?.lens_type||'',lens_index:'',lens_model:'',pairs:'1',amount:'',note:'',revision:null}}
 function blankB(cid){return {id:uuid(),is_new:true,company_id:cid||(activeComps()[0]?.id||''),purchase_date:today(),doc_no:'',amount:'',note:'',attachment:'',revision:null}}
 
 /* ---------- หน้าจอ ---------- */
@@ -214,14 +214,13 @@ function viewOverview(){
 function viewUse(){
   if(!U)U=blankU();const u=U,edit=!u.is_new;
   if(!activeComps().length&&!edit)return '<section class="panel"><div class="empty">ยังไม่มีบริษัทที่เปิดใช้งาน เพิ่มบริษัทที่แท็บบริษัทเลนส์ก่อน</div></section>';
-  const rx=(e,lab)=>`<tr><th>${lab}</th><td><input id="u_${e}_sph" inputmode="decimal" value="${esc(u[e+'_sph'])}" aria-label="SPH ${lab}"></td><td><input id="u_${e}_cyl" inputmode="decimal" value="${esc(u[e+'_cyl'])}" aria-label="CYL ${lab}"></td><td><input id="u_${e}_ax" inputmode="numeric" value="${esc(u[e+'_ax'])}" aria-label="AX ${lab}"></td></tr>`;
   return `<section class="panel">${edit?`<div class="notice"><span>กำลังแก้ไขรายการตัดคูปอง บิล <b>${esc(u.bill_no||'–')}</b> ยอดคงเหลือจะคำนวณใหม่ให้อัตโนมัติ</span><button type="button" class="btn sm" data-act="use-cancel-edit">ยกเลิกการแก้ไข</button></div>`:''}
    <div class="tools between"><h2>${edit?'แก้ไขรายการตัดคูปอง':'ตัดคูปองเลนส์ (กรอกจากบิลบริษัททีละคู่)'}</h2></div>
    <div class="grid"><label><span class="req">บริษัทเลนส์</span><select id="u_company_id">${compOpts(u.company_id)}</select></label>
     <label><span class="req">วันที่ตัดคูปอง</span><input id="u_use_date" type="date" value="${esc(u.use_date)}"></label>
     <label><span>เลขที่บิลจากบริษัท</span><input id="u_bill_no" value="${esc(u.bill_no)}"></label>
     <div><span class="dim">เครดิตคงเหลือ</span><div class="bal" id="uBal">–</div><div class="dim" id="uAfter"></div></div></div>
-   <div class="tw"><table class="rx"><thead><tr><th></th><th>SPH</th><th>CYL</th><th>AX</th></tr></thead><tbody>${rx('r','ขวา (OD)')}${rx('l','ซ้าย (OS)')}</tbody></table></div>
+   <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))"><label><span>ค่าสายตาขวา (OD)</span><input id="u_r_text" autocomplete="off" placeholder="เช่น -2.00 -0.50 x180" value="${esc(u.r_text)}"></label><label><span>ค่าสายตาซ้าย (OS)</span><input id="u_l_text" autocomplete="off" placeholder="เช่น -2.25 -0.75 x170" value="${esc(u.l_text)}"></label></div>
    <div class="grid"><label><span>ชนิดเลนส์</span><input id="u_lens_type" list="dlType" value="${esc(u.lens_type)}"><datalist id="dlType">${LENS_TYPES.map(t=>`<option value="${t}"></option>`).join('')}</datalist></label>
     <label><span>Index</span><input id="u_lens_index" list="dlIdx" inputmode="decimal" value="${esc(u.lens_index)}"><datalist id="dlIdx">${INDEXES.map(t=>`<option value="${t}"></option>`).join('')}</datalist></label>
     <label><span>รุ่น / ชื่อเลนส์</span><input id="u_lens_model" value="${esc(u.lens_model)}"></label>
@@ -251,9 +250,8 @@ async function saveUse(force,over){
   if(!u.use_date)return err.textContent='กรุณาเลือกวันที่';
   if(!(num(u.amount)>0))return err.textContent='กรุณากรอกมูลค่าที่ตัดจากคูปอง';
   if(!(parseInt(u.pairs,10)>=1))return err.textContent='จำนวนคู่ต้องตั้งแต่ 1 ขึ้นไป';
-  for(const e of['r','l']){const a=String(u[e+'_ax']||'');if(a&&!(/^\d{1,3}$/.test(a)&&+a<=180))return err.textContent='AX ต้องเป็นตัวเลข 0 ถึง 180'}
   setEditor(ed);const btn=$('[data-act=use-save]');btn.disabled=true;
-  const p={...u,amount:r2(num(u.amount)),pairs:parseInt(u.pairs,10)};delete p.orig_amount;delete p.orig_company;if(p.revision==null)delete p.revision;
+  const p={...u,amount:r2(num(u.amount)),pairs:parseInt(u.pairs,10),r_sph:String(u.r_text||'').trim(),r_cyl:'',r_ax:'',l_sph:String(u.l_text||'').trim(),l_cyl:'',l_ax:''};delete p.r_text;delete p.l_text;delete p.orig_amount;delete p.orig_company;if(p.revision==null)delete p.revision;
   try{
     const j=await rpc('vc_usage_save',{p_pin:PIN,p:p,p_editor:ed,p_force:!!force,p_allow_over:!!over});
     await loadOverview();LS.usages.loaded=false;REPORT.data=null;
@@ -261,7 +259,7 @@ async function saveUse(force,over){
     if(wasEdit){U=null;toast(`บันทึกการแก้ไขแล้ว ${name} คงเหลือ ${money(num(j.balance))}`);location.hash='usages';return}
     U=blankU(u);render();
     $('#uMsg').innerHTML=`<div class="notice ok"><span>${j.repeat?'รายการนี้บันทึกไปแล้ว ไม่ได้ตัดซ้ำ':'ตัดคูปองแล้ว'} ${esc(name)} ${money(num(j.record.amount))} บาท · คงเหลือ <b>${money(num(j.balance))}</b> บาท</span></div>`;
-    const f=$('#u_r_sph');if(f)f.focus();
+    const f=$('#u_r_text');if(f)f.focus();
   }catch(e){
     if(guard(e))return;btn.disabled=false;
     if(e.code==='duplicate')$('#uMsg').innerHTML=`<div class="notice err"><span>${esc(e.msg)} ถ้าเป็นเลนส์อีกคู่ที่ค่าเหมือนกันจริง กดบันทึกซ้ำได้</span><button type="button" class="btn sm danger" data-act="use-force">บันทึกซ้ำโดยตั้งใจ</button></div>`;
@@ -380,8 +378,8 @@ function csvDownload(name,head,rows){
 }
 async function exportCsv(k){
   try{const rows=await fetchAllRows(k);if(!rows.length)return toast('ไม่มีรายการให้ส่งออก');
-    if(k==='usages')csvDownload(`lens-voucher-usages-${today()}.csv`,['วันที่','บริษัท','เลขบิล','OD SPH','OD CYL','OD AX','OS SPH','OS CYL','OS AX','ชนิดเลนส์','Index','รุ่นเลนส์','จำนวนคู่','มูลค่าตัด','คืนยอดแล้ว','สุทธิ','หมายเหตุ','สถานะ','เหตุผลยกเลิก','ผู้บันทึก'],
-      rows.map(r=>[r.use_date,r.company_name,r.bill_no,r.r_sph,r.r_cyl,r.r_ax,r.l_sph,r.l_cyl,r.l_ax,r.lens_type,r.lens_index,r.lens_model,r.pairs,num(r.amount),num(r.refunded),r.status==='active'?r2(num(r.amount)-num(r.refunded)):0,r.note,r.status==='active'?'ใช้งาน':'ยกเลิก',r.cancel_reason,r.created_by]));
+    if(k==='usages')csvDownload(`lens-voucher-usages-${today()}.csv`,['วันที่','บริษัท','เลขบิล','ขวา (OD)','ซ้าย (OS)','ชนิดเลนส์','Index','รุ่นเลนส์','จำนวนคู่','มูลค่าตัด','คืนยอดแล้ว','สุทธิ','หมายเหตุ','สถานะ','เหตุผลยกเลิก','ผู้บันทึก'],
+      rows.map(r=>[r.use_date,r.company_name,r.bill_no,rxText(r.r_sph,r.r_cyl,r.r_ax).replace(/^–$/,''),rxText(r.l_sph,r.l_cyl,r.l_ax).replace(/^–$/,''),r.lens_type,r.lens_index,r.lens_model,r.pairs,num(r.amount),num(r.refunded),r.status==='active'?r2(num(r.amount)-num(r.refunded)):0,r.note,r.status==='active'?'ใช้งาน':'ยกเลิก',r.cancel_reason,r.created_by]));
     else csvDownload(`lens-voucher-purchases-${today()}.csv`,['วันที่','บริษัท','เลขที่เอกสาร','จำนวนเงิน','หมายเหตุ','มีรูปบิล','สถานะ','เหตุผลยกเลิก','ผู้บันทึก'],
       rows.map(r=>[r.purchase_date,r.company_name,r.doc_no,num(r.amount),r.note,r.has_attachment?'มี':'',r.status==='active'?'ใช้งาน':'ยกเลิก',r.cancel_reason,r.created_by]));
     toast(`ส่งออก ${rows.length} รายการแล้ว`)}catch(e){if(!guard(e))toast(errText(e))}
@@ -506,7 +504,7 @@ document.addEventListener('click',ev=>{
   if(a==='buy-cancel-edit'){B=null;history.back()}
   if(a==='open-usage')openDetail('usage',id);if(a==='open-purchase')openDetail('purchase',id);
   if(a==='dlg-close')d.close();
-  if(a==='usage-edit'){const r=d._data.record;U={...Object.fromEntries(Object.entries(r).map(([k,v])=>[k,v??''])),is_new:false,pairs:String(r.pairs),amount:String(num(r.amount)),revision:r.revision,orig_amount:num(r.amount),orig_company:r.company_id};d.close();location.hash='use';render()}
+  if(a==='usage-edit'){const r=d._data.record;U={...Object.fromEntries(Object.entries(r).map(([k,v])=>[k,v??''])),is_new:false,pairs:String(r.pairs),amount:String(num(r.amount)),r_text:[r.r_sph,r.r_cyl,r.r_ax?'x'+r.r_ax:''].filter(Boolean).join(' '),l_text:[r.l_sph,r.l_cyl,r.l_ax?'x'+r.l_ax:''].filter(Boolean).join(' '),revision:r.revision,orig_amount:num(r.amount),orig_company:r.company_id};d.close();location.hash='use';render()}
   if(a==='purchase-edit'){const r=d._data.record;B={id:r.id,is_new:false,company_id:r.company_id,purchase_date:r.purchase_date,doc_no:r.doc_no||'',amount:String(num(r.amount)),note:r.note||'',attachment:r.attachment||'',revision:r.revision};d.close();location.hash='buy';render()}
   if(a==='usage-refund-open')$('#dAct').innerHTML=actForm('refund');
   if(a==='usage-cancel-open')$('#dAct').innerHTML=actForm('usage');
