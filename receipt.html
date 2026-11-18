@@ -139,12 +139,17 @@ dialog .in{padding:16px;display:flex;flex-direction:column;gap:12px}
 .s-rev{position:absolute;left:9mm;bottom:3mm;font-size:6.5pt;color:#777}
 
 #printRoot{display:none}
-@page{size:148mm 210mm;margin:0}
+@page{size:A5 portrait;margin:6mm 7mm}
 @media print{
-  html,body{background:#fff!important;margin:0;padding:0}
+  html,body{background:#fff!important;margin:0!important;padding:0!important;width:auto!important}
   body>*:not(#printRoot){display:none!important}
-  #printRoot{display:block}
-  #printRoot .sheet{box-shadow:none;page-break-after:avoid;break-after:avoid}
+  #printRoot{display:block;width:100%}
+  /* ยืดตามพื้นที่พิมพ์จริงของเครื่องพิมพ์ ไม่ล็อกขนาด เพื่อไม่ให้ล้นขอบหรือขึ้นหน้าที่ 2 */
+  #printRoot .sheet{width:100%;max-width:136mm;height:auto;min-height:0;padding:0;margin:0;overflow:visible;box-shadow:none;gap:2.4mm;break-inside:avoid;page-break-inside:avoid}
+  #printRoot .s-head{grid-template-columns:27mm minmax(0,1fr) 37mm}
+  #printRoot .s-head img{width:27mm}
+  #printRoot .s-sign{margin-top:7mm}
+  #printRoot .s-rev{position:static;margin-top:1mm}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
 @media(max-width:1000px){.editor{grid-template-columns:minmax(0,1fr)}.prev-wrap{position:static}}
